@@ -1,6 +1,77 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+# ============================
+# Leitura/normalização robusta
+# ============================
+
+def _norm_str(x: str) -> str:
+    return (
+        str(x).strip().lower()
+        .replace("ç", "c").replace("ã", "a").replace("á", "a").replace("à", "a").replace("â", "a")
+        .replace("é", "e").replace("ê", "e")
+        .replace("í", "i")
+        .replace("ó", "o").replace("ô", "o").replace("õ", "o")
+        .replace("ú", "u")
+    )
+
+def detect_header_row(df_raw, max_rows: int = 30) -> int:
+    """Tenta achar a linha de cabeçalho em planilhas que vêm com títulos/linhas extras."""
+    want = {
+        "serie": ["serie", "série", "ser"],
+        "numero": ["numero", "número", "num", "nf", "nfe", "nfce", "documento", "cupom"],
+    }
+    best = (0, -1)  # (row_index, score)
+    rows = min(max_rows, len(df_raw))
+    for r in range(rows):
+        vals = [_norm_str(v) for v in df_raw.iloc[r].tolist()]
+        score = 0
+        # conta se tem pistas fortes de série/número
+        if any(any(k in v for k in want["serie"]) for v in vals):
+            score += 2
+        if any(any(k in v for k in want["numero"]) for v in vals):
+            score += 2
+        # bônus por ter valor/icms/base
+        bonus_keys = ["valor", "total", "base", "icms"]
+        if any(any(k in v for k in bonus_keys) for v in vals):
+            score += 1
+        if score > best[1]:
+            best = (r, score)
+    return best[0]
+
+def read_excel_smart(uploaded_file):
+    """Lê Excel tentando acertar automaticamente a linha de cabeçalho."""
+    # leitura crua para detectar cabeçalho
+    raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+    hdr = detect_header_row(raw)
+    df = pd.read_excel(uploaded_file, sheet_name=0, header=hdr)
+    # remove colunas totalmente vazias
+    df = df.dropna(axis=1, how="all")
+    return df
+
+def normalize_keys(df):
+    for col in ["serie", "numero"]:
+        if col in df.columns:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(".0", "", regex=False)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+    return df
+
+def ensure_required_columns(df, source_name: str):
+    missing = [c for c in ["serie", "numero"] if c not in df.columns]
+    if missing:
+        st.error(
+            f"⚠️ Não consegui identificar as colunas {missing} no arquivo {source_name}. "
+            f"Colunas encontradas: {list(df.columns)[:30]}"
+        )
+        st.dataframe(df.head(20))
+        return False
+    return True
+
 from io import BytesIO
 from datetime import datetime
 from dateutil import parser as dtparser
@@ -1313,7 +1384,11 @@ if not sefaz_df.empty and "cancelada" in sefaz_df.columns:
 
 if not sefaz_df.empty:
     alerts = audit(sefaz_df, adm_df, flex_df)
+    if ok_sefaz and ok_adm and ok_flex:
     full_df = build_full_table(sefaz_df, adm_df, flex_df, alerts)
+else:
+    full_df = pd.DataFrame()
+
 
 st.write("")
 
