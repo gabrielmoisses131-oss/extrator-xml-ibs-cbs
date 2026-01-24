@@ -377,92 +377,38 @@ def excel_download(df_dict):
         # =========================
         def apply_table(sheet, df):
             ws = writer.sheets[sheet]
+            try:
+                nrows, ncols = df.shape
+            except Exception:
+                nrows, ncols = 0, 0
 
-            # Congelar: cabeçalho + 3 colunas (data/serie/numero) quando existir
-            freeze_col = 0
-            for c in ["data", "serie", "numero"]:
-                if c in [norm_txt(x) for x in df.columns]:
-                    freeze_col = max(freeze_col, [norm_txt(x) for x in df.columns].index(c) + 1)
-            ws.freeze_panes(1, freeze_col)
+            # Evita ws.add_table() (causa OverlappingRange quando o df já foi escrito)
+            # Congela cabeçalho
+            try:
+                ws.freeze_panes(1, 0)
+            except Exception:
+                pass
 
-            # Filtro
-            if len(df.columns) > 0:
-                ws.autofilter(0, 0, max(0, len(df)), max(0, len(df.columns) - 1))
+            # Autofiltro
+            if nrows > 0 and ncols > 0:
+                try:
+                    ws.autofilter(0, 0, nrows, ncols - 1)
+                except Exception:
+                    pass
 
-            # Cabeçalho
-            ws.set_row(0, 20)
-            for col_idx, col_name in enumerate(df.columns):
-                ws.write(0, col_idx, col_name, fmt_header)
-
-            # Tabela do Excel (estilo)
-            nrows = len(df) + 1
-            ncols = len(df.columns)
+            # Ajuste de colunas (amostra para performance)
             if ncols > 0:
-                ws.add_table(0, 0, max(0, nrows - 1), max(0, ncols - 1), {
-                    "style": "Table Style Medium 9",
-                    "columns": [{"header": c} for c in df.columns],
-                    "autofilter": True
-                })
+                try:
+                    for i, col in enumerate(df.columns):
+                        max_len = max(len(str(col)), 8)
+                        sample = df.iloc[: min(200, nrows), i].astype(str)
+                        if len(sample) > 0:
+                            max_len = max(max_len, int(sample.map(len).max()))
+                        ws.set_column(i, i, min(max_len + 2, 45))
+                except Exception:
+                    pass
 
-            # Ajuste de colunas + formatos
-            for col_idx, col_name in enumerate(df.columns):
-                s = df[col_name]
-                cname = norm_txt(col_name)
 
-                sample = s.astype(str).head(200).tolist()
-                max_len = max([len(str(col_name))] + [len(x) for x in sample if x is not None])
-                width = min(max(10, max_len + 2), 55)
-
-                col_fmt = fmt_text
-                if "motivo" == cname:
-                    col_fmt = fmt_wrap
-                    width = max(width, 35)
-                elif "data" in cname:
-                    col_fmt = fmt_date
-                    width = max(width, 12)
-                elif any(k in cname for k in ["serie", "numero", "cnf", "id"]) and s.dropna().apply(lambda x: str(x).isdigit()).mean() > 0.8:
-                    col_fmt = fmt_int
-                elif any(k in cname for k in ["valor", "base", "icms"]):
-                    col_fmt = fmt_num
-
-                ws.set_column(col_idx, col_idx, width, col_fmt)
-
-            # Condicionais em status
-            for st_col in [c for c in df.columns if norm_txt(c).startswith("status_")]:
-                cidx = df.columns.get_loc(st_col)
-                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"OK","format":fmt_ok})
-                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"MULTIPLO","format":fmt_warn})
-                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"DIVERGE","format":fmt_warn})
-                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"NAO_ENCONTRADO","format":fmt_bad})
-                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"SEM_ARQUIVO","format":fmt_bad})
-
-            # Motivo destacado
-            for c in df.columns:
-                if norm_txt(c) == "motivo":
-                    cidx = df.columns.get_loc(c)
-                    ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"Divergência","format":fmt_div})
-
-            # Zebra suave por linhas
-            ws.conditional_format(1, 0, max(1, len(df)), max(0, len(df.columns) - 1), {
-                "type": "formula",
-                "criteria": "=MOD(ROW(),2)=0",
-                "format": zebra
-            })
-
-            # Agrupamento de colunas (visual): SEFAZ | ADM | FLEX (quando existir)
-            cols_norm = [norm_txt(c) for c in df.columns]
-            def group(prefixes, level=1, hidden=False):
-                for p in prefixes:
-                    if p in cols_norm:
-                        i = cols_norm.index(p)
-                        ws.set_column(i, i, None, None, {"level": level, "hidden": hidden})
-            # Colunas auxiliares de data_*
-            group(["data_adm","data_flex"], level=1, hidden=True)
-
-        # Escreve abas
-        for name, df in df_dict.items():
-            sheet = name[:31]
-            df.to_excel(writer, sheet_name=sheet, index=False)
             apply_table(sheet, df)
 
         # Cores das abas
