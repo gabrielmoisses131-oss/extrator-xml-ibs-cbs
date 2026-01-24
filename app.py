@@ -273,9 +273,6 @@ def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataF
 
 def style_table(df):
     if df is None or df.empty:
-    # garante chaves (ADM/FLEX podem vir com cabeçalho diferente)
-    df = _ensure_serie_numero(df)
-
         return df
     d = df.copy()
 
