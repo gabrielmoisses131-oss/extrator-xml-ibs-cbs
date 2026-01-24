@@ -217,7 +217,7 @@ def to_float(x):
     elif "," in s and "." not in s:
         # "123,45"
         s = s.replace(",", ".")
-    else:
+
         # "43.00" (XML) ou "4300"
         pass
 
@@ -369,7 +369,7 @@ def excel_download(df_dict):
             for r, (k, v) in enumerate(alerts_df["status_flex"].fillna("SEM").value_counts().items(), start=1):
                 ws.write(st_row + 6 + r, st_col, str(k), fmt_text)
                 ws.write(st_row + 6 + r, st_col + 1, int(v), fmt_int)
-        else:
+
             ws.write(start_row, 1, "Sem alertas gerados.", fmt_text)
 
         # =========================
@@ -490,7 +490,7 @@ def safe_get_col(df, ideas, required=True, default=np.nan):
                 f"Não encontrei coluna parecida com {ideas}. "
                 f"Colunas disponíveis: {list(df.columns)}"
             )
-        else:
+
             return pd.Series([default] * len(df), index=df.index)
     return df[col]
 
@@ -679,7 +679,7 @@ def standardize_adm(df):
     serie_col = find_col(df, ["serie", "série"])
     if serie_col:
         out["serie"] = df[serie_col].map(normalize_key)
-    else:
+
         out["serie"] = "1"
 
     out["numero"] = safe_get_col(df, ["numero", "número", "nnf", "n nf"], required=True).map(normalize_key)
@@ -706,7 +706,7 @@ def standardize_flex(df):
     serie_col = find_col(df, ["serie", "série"])
     if serie_col:
         out["serie"] = df[serie_col].map(normalize_key)
-    else:
+
         out["serie"] = "1"
 
     out["numero"] = safe_get_col(df, ["numero", "número", "nfce", "nota", "nnf", "n nf"], required=True).map(normalize_key)
@@ -926,9 +926,14 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
             "icms": "icms_adm",
             "data": "data_adm",
         })
-        out[['serie','numero']] = out[['serie','numero']].astype(str)
-    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
-    out = out.merge(adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]], on=["serie","numero"], how="left")
+        # garante tipos iguais para merge
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        adm2[["serie","numero"]] = adm2[["serie","numero"]].astype(str)
+        out = out.merge(
+            adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]],
+            on=["serie","numero"],
+            how="left",
+        )
     else:
         out["data_adm"] = np.nan
         out["valor_adm"] = np.nan
@@ -944,15 +949,19 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
             "icms": "icms_flex",
             "data": "data_flex",
         })
-        out[['serie','numero']] = out[['serie','numero']].astype(str)
-    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
-    out = out.merge(flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]], on=["serie","numero"], how="left")
+        # garante tipos iguais para merge
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        flex2[["serie","numero"]] = flex2[["serie","numero"]].astype(str)
+        out = out.merge(
+            flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]],
+            on=["serie","numero"],
+            how="left",
+        )
     else:
         out["data_flex"] = np.nan
         out["valor_flex"] = np.nan
         out["base_flex"] = np.nan
         out["icms_flex"] = np.nan
-
     # status: OK se achou linha, NAO_ENCONTRADO caso contrário
     out["status_adm"] = np.where(out["valor_adm"].notna(), "OK", "NAO_ENCONTRADO")
     out["status_flex"] = np.where(out["valor_flex"].notna(), "OK", "NAO_ENCONTRADO")
@@ -968,9 +977,9 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
         motivos = (g.groupby(["serie","numero"])["motivo"]
                    .apply(lambda s: " | ".join(pd.unique(s.astype(str))))
                    .reset_index(name="motivo_alerta"))
-        out[['serie','numero']] = out[['serie','numero']].astype(str)
-    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
-    out = out.merge(motivos, on=["serie","numero"], how="left")
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        motivos[["serie","numero"]] = motivos[["serie","numero"]].astype(str)
+        out = out.merge(motivos, on=["serie","numero"], how="left")
         out["motivo"] = np.where(out["motivo_alerta"].notna(), out["motivo_alerta"], out["motivo"])
         out = out.drop(columns=["motivo_alerta"])
 
@@ -979,18 +988,18 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
             st_adm = (g.groupby(["serie","numero"])["status_adm"]
                       .apply(lambda s: pd.unique(s.astype(str))[-1])
                       .reset_index(name="_status_adm"))
-            out[['serie','numero']] = out[['serie','numero']].astype(str)
-    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
-    out = out.merge(st_adm, on=["serie","numero"], how="left")
+            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+            st_adm[["serie","numero"]] = st_adm[["serie","numero"]].astype(str)
+            out = out.merge(st_adm, on=["serie","numero"], how="left")
             out["status_adm"] = np.where(out["_status_adm"].notna(), out["_status_adm"], out["status_adm"])
             out = out.drop(columns=["_status_adm"])
         if "status_flex" in g.columns:
             st_fx = (g.groupby(["serie","numero"])["status_flex"]
                      .apply(lambda s: pd.unique(s.astype(str))[-1])
                      .reset_index(name="_status_flex"))
-            out[['serie','numero']] = out[['serie','numero']].astype(str)
-    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
-    out = out.merge(st_fx, on=["serie","numero"], how="left")
+            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+            st_fx[["serie","numero"]] = st_fx[["serie","numero"]].astype(str)
+            out = out.merge(st_fx, on=["serie","numero"], how="left")
             out["status_flex"] = np.where(out["_status_flex"].notna(), out["_status_flex"], out["status_flex"])
             out = out.drop(columns=["_status_flex"])
 
@@ -1202,7 +1211,7 @@ def upload_block(col, title, desc, key, border_class, types):
         up = st.file_uploader(" ", type=types, key=key, label_visibility="collapsed")
         if up is not None:
             st.markdown(f'<span class="small-pill ok">✅ {up.name}</span>', unsafe_allow_html=True)
-        else:
+
             st.markdown('<span class="small-pill">⬆️ Clique ou arraste o arquivo</span>', unsafe_allow_html=True)
         st.markdown("""</div>""", unsafe_allow_html=True)
         return up
@@ -1340,7 +1349,7 @@ if up_sefaz is not None:
         sefaz_df = read_sefaz_zip(up_sefaz)
     elif name.endswith(".xlsx") or name.endswith(".xls"):
         sefaz_df = read_excel_any(up_sefaz, fonte="SEFAZ", dividir_por_100=False)
-    else:
+
         sefaz_df = read_sefaz_xml_file(up_sefaz)
 
 
@@ -1381,7 +1390,7 @@ if (m.get("total_notas", 0) == 0) and (not alerts.empty) and ("valor_sefaz" in a
     if "serie" in sef.columns and "numero" in sef.columns:
         sef["_k"] = sef["serie"].astype(str) + "-" + sef["numero"].astype(str)
         total_notas = sef["_k"].nunique()
-    else:
+
         total_notas = len(sef)
     valor_total = pd.to_numeric(sef["valor_sefaz"], errors="coerce").fillna(0).sum()
     icms_total = pd.to_numeric(sef.get("icms_sefaz", 0), errors="coerce").fillna(0).sum()
@@ -1454,7 +1463,7 @@ search = st.text_input("Buscar (número, série ou motivo)", placeholder="Ex.: 1
 
 if sefaz_df.empty:
     st.info("Carregue o arquivo SEFAZ para ver os resultados.")
-else:
+
     base = (full_df.copy() if isinstance(full_df, pd.DataFrame) and not full_df.empty else alerts.copy())
 
     if choice_key == "Divergentes":
@@ -1467,7 +1476,7 @@ else:
         # conferidos agora vêm da tabela completa (motivo = Conferido)
         if base.empty:
             base = base
-        else:
+
             base = base[base.get("motivo").astype(str).str.lower().eq("conferido")]
 
     if search and not base.empty:
@@ -1484,7 +1493,7 @@ else:
 
     if base.empty:
         st.success("Sem registros nesse filtro ✅")
-    else:
+
         st.dataframe(style_table(base), use_container_width=True, height=520)
 
 st.write("")
