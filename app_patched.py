@@ -1,77 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-# ============================
-# Leitura/normalização robusta
-# ============================
-
-def _norm_str(x: str) -> str:
-    return (
-        str(x).strip().lower()
-        .replace("ç", "c").replace("ã", "a").replace("á", "a").replace("à", "a").replace("â", "a")
-        .replace("é", "e").replace("ê", "e")
-        .replace("í", "i")
-        .replace("ó", "o").replace("ô", "o").replace("õ", "o")
-        .replace("ú", "u")
-    )
-
-def detect_header_row(df_raw, max_rows: int = 30) -> int:
-    """Tenta achar a linha de cabeçalho em planilhas que vêm com títulos/linhas extras."""
-    want = {
-        "serie": ["serie", "série", "ser"],
-        "numero": ["numero", "número", "num", "nf", "nfe", "nfce", "documento", "cupom"],
-    }
-    best = (0, -1)  # (row_index, score)
-    rows = min(max_rows, len(df_raw))
-    for r in range(rows):
-        vals = [_norm_str(v) for v in df_raw.iloc[r].tolist()]
-        score = 0
-        # conta se tem pistas fortes de série/número
-        if any(any(k in v for k in want["serie"]) for v in vals):
-            score += 2
-        if any(any(k in v for k in want["numero"]) for v in vals):
-            score += 2
-        # bônus por ter valor/icms/base
-        bonus_keys = ["valor", "total", "base", "icms"]
-        if any(any(k in v for k in bonus_keys) for v in vals):
-            score += 1
-        if score > best[1]:
-            best = (r, score)
-    return best[0]
-
-def read_excel_smart(uploaded_file):
-    """Lê Excel tentando acertar automaticamente a linha de cabeçalho."""
-    # leitura crua para detectar cabeçalho
-    raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
-    hdr = detect_header_row(raw)
-    df = pd.read_excel(uploaded_file, sheet_name=0, header=hdr)
-    # remove colunas totalmente vazias
-    df = df.dropna(axis=1, how="all")
-    return df
-
-def normalize_keys(df):
-    for col in ["serie", "numero"]:
-        if col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(".0", "", regex=False)
-                .str.replace(",", "", regex=False)
-                .str.strip()
-            )
-    return df
-
-def ensure_required_columns(df, source_name: str):
-    missing = [c for c in ["serie", "numero"] if c not in df.columns]
-    if missing:
-        st.error(
-            f"⚠️ Não consegui identificar as colunas {missing} no arquivo {source_name}. "
-            f"Colunas encontradas: {list(df.columns)[:30]}"
-        )
-        st.dataframe(df.head(20))
-        return False
-    return True
-
 from io import BytesIO
 from datetime import datetime
 from dateutil import parser as dtparser
@@ -81,173 +10,6 @@ import re
 import os
 
 st.set_page_config(page_title="Auditor Fiscal NFC-e", page_icon="🛡️", layout="wide")
-
-# -----------------------------
-# Premium UI (Lovable-inspired)
-# -----------------------------
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
-:root{
-  --bg: #0b1220;
-  --card: rgba(17,24,39,.72);
-  --card2: rgba(17,24,39,.88);
-  --border: rgba(148,163,184,.18);
-  --muted: rgba(226,232,240,.65);
-  --text: rgba(226,232,240,.95);
-
-  --primary: #3b82f6;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-
-  --grad-hero: linear-gradient(135deg, #3b82f6 0%, #7c3aed 50%, #db2777 100%);
-  --grad-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  --grad-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  --grad-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
-  --shadow2: 0 20px 45px rgba(0,0,0,.45);
-  --r: 18px;
-}
-
-html, body, [class*="css"]  { font-family: 'Plus Jakarta Sans', sans-serif; }
-
-/* Page background */
-.stApp{
-  background: radial-gradient(1200px 600px at 80% -20%, rgba(59,130,246,.22), transparent 60%),
-              radial-gradient(900px 500px at -10% 10%, rgba(16,185,129,.18), transparent 55%),
-              radial-gradient(1000px 600px at 50% 120%, rgba(245,158,11,.12), transparent 60%),
-              var(--bg);
-}
-
-/* Reduce Streamlit chrome */
-header[data-testid="stHeader"], footer { visibility: hidden; height: 0; }
-
-/* Generic card */
-.l-card{ 
-  border: 1px solid var(--border);
-  background: rgba(17,24,39,.55);
-  backdrop-filter: blur(14px);
-  border-radius: var(--r);
-  padding: 18px 18px;
-  box-shadow: var(--shadow);
-}
-
-/* Header hero */
-.l-hero{
-  border: 1px solid var(--border);
-  background: rgba(17,24,39,.55);
-  backdrop-filter: blur(18px);
-  border-radius: calc(var(--r) + 6px);
-  padding: 18px 18px;
-  box-shadow: var(--shadow);
-  display:flex; align-items:center; justify-content:space-between;
-  position: relative; overflow:hidden;
-}
-.l-hero:before{
-  content:"";
-  position:absolute; inset:-2px;
-  background: radial-gradient(500px 220px at 80% 0%, rgba(59,130,246,.18), transparent 70%),
-              radial-gradient(420px 220px at 0% 30%, rgba(16,185,129,.14), transparent 70%);
-  pointer-events:none;
-}
-.l-hero-left{ display:flex; gap:14px; align-items:center; position:relative; }
-.l-icon{
-  width:46px; height:46px; border-radius: 16px;
-  background: var(--grad-hero);
-  display:flex; align-items:center; justify-content:center;
-  box-shadow: 0 0 40px rgba(59,130,246,.25);
-  font-size:22px;
-}
-.l-title{ margin:0; font-weight:900; font-size:20px; letter-spacing:-.02em; color: var(--text);} 
-.l-sub{ margin:2px 0 0 0; font-weight:600; font-size:12.5px; color: var(--muted);} 
-.l-badge{
-  position:relative;
-  display:flex; gap:8px; align-items:center;
-  border: 1px solid rgba(16,185,129,.25);
-  background: rgba(16,185,129,.12);
-  color: #34d399;
-  padding: 8px 12px;
-  border-radius: 999px;
-  font-weight:800; font-size:12.5px;
-}
-
-/* Upload cards */
-.upload-card{
-  border: 2px dashed var(--border);
-  border-radius: calc(var(--r) + 6px);
-  padding: 18px 18px;
-  background: rgba(17,24,39,.45);
-  transition: all .25s ease;
-  box-shadow: var(--shadow);
-}
-.upload-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); border-color: rgba(148,163,184,.35); }
-.upload-card.blue:hover{ border-color: rgba(59,130,246,.55); background: rgba(59,130,246,.05); }
-.upload-card.green:hover{ border-color: rgba(16,185,129,.55); background: rgba(16,185,129,.05); }
-.upload-card.amber:hover{ border-color: rgba(245,158,11,.55); background: rgba(245,158,11,.05); }
-.upload-title{ font-weight:900; font-size:15px; margin-top:8px; }
-.upload-desc{ margin:6px 0 12px 0; color: var(--muted); font-size:12.5px; font-weight:600; }
-
-.small-pill{
-  display:inline-flex; gap:8px; align-items:center;
-  border-radius: 999px;
-  padding: 8px 12px;
-  border: 1px dashed rgba(148,163,184,.25);
-  color: var(--muted);
-  font-weight:700;
-  font-size:12.5px;
-}
-.small-pill.ok{ border-style:solid; background: rgba(148,163,184,.08); color: rgba(226,232,240,.92); }
-
-/* Big gradients (Valor/ICMS) */
-.grad{
-  border: 1px solid var(--border);
-  border-radius: calc(var(--r) + 6px);
-  padding: 18px 18px;
-  background: rgba(17,24,39,.55);
-  box-shadow: var(--shadow);
-  position: relative; overflow:hidden;
-}
-.grad:before{
-  content:""; position:absolute; inset:-2px; opacity:.55;
-  background: radial-gradient(400px 160px at 20% 0%, rgba(59,130,246,.35), transparent 60%);
-}
-.grad.bluepurp:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(59,130,246,.38), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(124,58,237,.30), transparent 65%); }
-.grad.green:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(16,185,129,.35), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(52,211,153,.18), transparent 65%); }
-.grad-label{ position:relative; margin:0; color: var(--muted); font-weight:800; letter-spacing:.06em; text-transform:uppercase; font-size:12px; }
-.grad-value{ position:relative; margin:8px 0 0 0; color: var(--text); font-weight:950; font-size:22px; }
-
-/* KPI cards (StatCard vibe) */
-.kpi{
-  border: 1px solid var(--border);
-  border-radius: calc(var(--r) + 6px);
-  padding: 18px 18px;
-  background: rgba(17,24,39,.55);
-  box-shadow: var(--shadow);
-  transition: all .25s ease;
-  display:flex; align-items:flex-start; justify-content:space-between;
-  position:relative; overflow:hidden;
-}
-.kpi:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); }
-.kpi:before{ content:""; position:absolute; right:-28px; top:-28px; width:120px; height:120px; border-radius:999px; background: rgba(59,130,246,.10); opacity:0; transition: opacity .25s ease; }
-.kpi:hover:before{ opacity:1; }
-.kpi h4{ margin:0; color: var(--muted); font-size:12px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
-.kpi .num{ margin-top:10px; font-size:28px; font-weight:950; color: var(--text); letter-spacing:-.02em; }
-.kpi .sub{ margin-top:6px; color: var(--muted); font-size:12.5px; font-weight:650; }
-.kpi .dot{ width:44px; height:44px; border-radius: 14px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:900; }
-.kpi.neutral .dot{ background: var(--grad-hero); box-shadow: 0 0 40px rgba(59,130,246,.22); }
-.kpi.success .dot{ background: var(--grad-success); box-shadow: 0 0 40px rgba(16,185,129,.22); }
-.kpi.warn .dot{ background: var(--grad-warning); box-shadow: 0 0 40px rgba(245,158,11,.20); }
-.kpi.danger .dot{ background: var(--grad-danger); box-shadow: 0 0 40px rgba(239,68,68,.20); }
-
-/* Radio tabs spacing */
-div[role="radiogroup"]{ gap: 16px; }
-
-</style>
-""", unsafe_allow_html=True)
-
 
 # -----------------------------
 # Utils
@@ -288,7 +50,7 @@ def to_float(x):
     elif "," in s and "." not in s:
         # "123,45"
         s = s.replace(",", ".")
-
+    else:
         # "43.00" (XML) ou "4300"
         pass
 
@@ -440,7 +202,7 @@ def excel_download(df_dict):
             for r, (k, v) in enumerate(alerts_df["status_flex"].fillna("SEM").value_counts().items(), start=1):
                 ws.write(st_row + 6 + r, st_col, str(k), fmt_text)
                 ws.write(st_row + 6 + r, st_col + 1, int(v), fmt_int)
-
+        else:
             ws.write(start_row, 1, "Sem alertas gerados.", fmt_text)
 
         # =========================
@@ -448,38 +210,92 @@ def excel_download(df_dict):
         # =========================
         def apply_table(sheet, df):
             ws = writer.sheets[sheet]
-            try:
-                nrows, ncols = df.shape
-            except Exception:
-                nrows, ncols = 0, 0
 
-            # Evita ws.add_table() (causa OverlappingRange quando o df já foi escrito)
-            # Congela cabeçalho
-            try:
-                ws.freeze_panes(1, 0)
-            except Exception:
-                pass
+            # Congelar: cabeçalho + 3 colunas (data/serie/numero) quando existir
+            freeze_col = 0
+            for c in ["data", "serie", "numero"]:
+                if c in [norm_txt(x) for x in df.columns]:
+                    freeze_col = max(freeze_col, [norm_txt(x) for x in df.columns].index(c) + 1)
+            ws.freeze_panes(1, freeze_col)
 
-            # Autofiltro
-            if nrows > 0 and ncols > 0:
-                try:
-                    ws.autofilter(0, 0, nrows, ncols - 1)
-                except Exception:
-                    pass
+            # Filtro
+            if len(df.columns) > 0:
+                ws.autofilter(0, 0, max(0, len(df)), max(0, len(df.columns) - 1))
 
-            # Ajuste de colunas (amostra para performance)
+            # Cabeçalho
+            ws.set_row(0, 20)
+            for col_idx, col_name in enumerate(df.columns):
+                ws.write(0, col_idx, col_name, fmt_header)
+
+            # Tabela do Excel (estilo)
+            nrows = len(df) + 1
+            ncols = len(df.columns)
             if ncols > 0:
-                try:
-                    for i, col in enumerate(df.columns):
-                        max_len = max(len(str(col)), 8)
-                        sample = df.iloc[: min(200, nrows), i].astype(str)
-                        if len(sample) > 0:
-                            max_len = max(max_len, int(sample.map(len).max()))
-                        ws.set_column(i, i, min(max_len + 2, 45))
-                except Exception:
-                    pass
+                ws.add_table(0, 0, max(0, nrows - 1), max(0, ncols - 1), {
+                    "style": "Table Style Medium 9",
+                    "columns": [{"header": c} for c in df.columns],
+                    "autofilter": True
+                })
 
+            # Ajuste de colunas + formatos
+            for col_idx, col_name in enumerate(df.columns):
+                s = df[col_name]
+                cname = norm_txt(col_name)
 
+                sample = s.astype(str).head(200).tolist()
+                max_len = max([len(str(col_name))] + [len(x) for x in sample if x is not None])
+                width = min(max(10, max_len + 2), 55)
+
+                col_fmt = fmt_text
+                if "motivo" == cname:
+                    col_fmt = fmt_wrap
+                    width = max(width, 35)
+                elif "data" in cname:
+                    col_fmt = fmt_date
+                    width = max(width, 12)
+                elif any(k in cname for k in ["serie", "numero", "cnf", "id"]) and s.dropna().apply(lambda x: str(x).isdigit()).mean() > 0.8:
+                    col_fmt = fmt_int
+                elif any(k in cname for k in ["valor", "base", "icms"]):
+                    col_fmt = fmt_num
+
+                ws.set_column(col_idx, col_idx, width, col_fmt)
+
+            # Condicionais em status
+            for st_col in [c for c in df.columns if norm_txt(c).startswith("status_")]:
+                cidx = df.columns.get_loc(st_col)
+                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"OK","format":fmt_ok})
+                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"MULTIPLO","format":fmt_warn})
+                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"DIVERGE","format":fmt_warn})
+                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"NAO_ENCONTRADO","format":fmt_bad})
+                ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"SEM_ARQUIVO","format":fmt_bad})
+
+            # Motivo destacado
+            for c in df.columns:
+                if norm_txt(c) == "motivo":
+                    cidx = df.columns.get_loc(c)
+                    ws.conditional_format(1, cidx, max(1, len(df)), cidx, {"type":"text","criteria":"containing","value":"Divergência","format":fmt_div})
+
+            # Zebra suave por linhas
+            ws.conditional_format(1, 0, max(1, len(df)), max(0, len(df.columns) - 1), {
+                "type": "formula",
+                "criteria": "=MOD(ROW(),2)=0",
+                "format": zebra
+            })
+
+            # Agrupamento de colunas (visual): SEFAZ | ADM | FLEX (quando existir)
+            cols_norm = [norm_txt(c) for c in df.columns]
+            def group(prefixes, level=1, hidden=False):
+                for p in prefixes:
+                    if p in cols_norm:
+                        i = cols_norm.index(p)
+                        ws.set_column(i, i, None, None, {"level": level, "hidden": hidden})
+            # Colunas auxiliares de data_*
+            group(["data_adm","data_flex"], level=1, hidden=True)
+
+        # Escreve abas
+        for name, df in df_dict.items():
+            sheet = name[:31]
+            df.to_excel(writer, sheet_name=sheet, index=False)
             apply_table(sheet, df)
 
         # Cores das abas
@@ -507,7 +323,7 @@ def safe_get_col(df, ideas, required=True, default=np.nan):
                 f"Não encontrei coluna parecida com {ideas}. "
                 f"Colunas disponíveis: {list(df.columns)}"
             )
-
+        else:
             return pd.Series([default] * len(df), index=df.index)
     return df[col]
 
@@ -696,7 +512,7 @@ def standardize_adm(df):
     serie_col = find_col(df, ["serie", "série"])
     if serie_col:
         out["serie"] = df[serie_col].map(normalize_key)
-
+    else:
         out["serie"] = "1"
 
     out["numero"] = safe_get_col(df, ["numero", "número", "nnf", "n nf"], required=True).map(normalize_key)
@@ -723,7 +539,7 @@ def standardize_flex(df):
     serie_col = find_col(df, ["serie", "série"])
     if serie_col:
         out["serie"] = df[serie_col].map(normalize_key)
-
+    else:
         out["serie"] = "1"
 
     out["numero"] = safe_get_col(df, ["numero", "número", "nfce", "nota", "nnf", "n nf"], required=True).map(normalize_key)
@@ -907,201 +723,31 @@ def audit(sefaz, adm, flex):
         df_alerts = df_alerts.drop_duplicates().sort_values(["serie","numero","motivo"])
     return df_alerts
 
-
-
-def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> pd.DataFrame:
-    """Gera uma tabela 'completa' (todas as notas do SEFAZ) com status ADM/FLEX e motivo.
-
-    - Base: universo SEFAZ
-    - Merge ADM/FLEX por (serie, numero)
-    - Motivo padrão: 'Conferido'
-    - Se a nota aparecer em alerts_df, o motivo vira a concatenação dos motivos (por nota)
-    """
-    sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
-    if sef is None or sef.empty:
-        return pd.DataFrame()
-
-    # garante colunas básicas
-    for c in ["data","serie","numero","valor","base","icms"]:
-        if c not in sef.columns:
-            sef[c] = np.nan
-
-    # renomeia colunas SEFAZ para não conflitar
-    out = sef.rename(columns={
-        "valor": "valor_sefaz",
-        "base": "base_sefaz",
-        "icms": "icms_sefaz",
-        "data": "data_sefaz",
-    }).copy()
-
-    # ADM
-    adm = adm_df.copy() if isinstance(adm_df, pd.DataFrame) else pd.DataFrame()
-    if adm is not None and not adm.empty and {"serie","numero"}.issubset(adm.columns):
-        adm2 = adm.rename(columns={
-            "valor": "valor_adm",
-            "base": "base_adm",
-            "icms": "icms_adm",
-            "data": "data_adm",
-        })
-        # garante tipos iguais para merge
-        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
-        adm2[["serie","numero"]] = adm2[["serie","numero"]].astype(str)
-        out = out.merge(
-            adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]],
-            on=["serie","numero"],
-            how="left",
-        )
-    else:
-        out["data_adm"] = np.nan
-        out["valor_adm"] = np.nan
-        out["base_adm"] = np.nan
-        out["icms_adm"] = np.nan
-
-    # FLEX
-    flex = flex_df.copy() if isinstance(flex_df, pd.DataFrame) else pd.DataFrame()
-    if flex is not None and not flex.empty and {"serie","numero"}.issubset(flex.columns):
-        flex2 = flex.rename(columns={
-            "valor": "valor_flex",
-            "base": "base_flex",
-            "icms": "icms_flex",
-            "data": "data_flex",
-        })
-        # garante tipos iguais para merge
-        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
-        flex2[["serie","numero"]] = flex2[["serie","numero"]].astype(str)
-        out = out.merge(
-            flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]],
-            on=["serie","numero"],
-            how="left",
-        )
-    else:
-        out["data_flex"] = np.nan
-        out["valor_flex"] = np.nan
-        out["base_flex"] = np.nan
-        out["icms_flex"] = np.nan
-    # status: OK se achou linha, NAO_ENCONTRADO caso contrário
-    out["status_adm"] = np.where(out["valor_adm"].notna(), "OK", "NAO_ENCONTRADO")
-    out["status_flex"] = np.where(out["valor_flex"].notna(), "OK", "NAO_ENCONTRADO")
-
-    # motivo padrão
-    out["motivo"] = "Conferido"
-
-    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
-    if al is not None and not al.empty and {"serie","numero","motivo"}.issubset(al.columns):
-        g = (al[["serie","numero","motivo","status_adm","status_flex"]]
-             .copy())
-        # agrega motivos por nota
-        motivos = (g.groupby(["serie","numero"])["motivo"]
-                   .apply(lambda s: " | ".join(pd.unique(s.astype(str))))
-                   .reset_index(name="motivo_alerta"))
-        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
-        motivos[["serie","numero"]] = motivos[["serie","numero"]].astype(str)
-        out = out.merge(motivos, on=["serie","numero"], how="left")
-        out["motivo"] = np.where(out["motivo_alerta"].notna(), out["motivo_alerta"], out["motivo"])
-        out = out.drop(columns=["motivo_alerta"])
-
-        # se alertas trouxerem status mais específicos, usa-os
-        if "status_adm" in g.columns:
-            st_adm = (g.groupby(["serie","numero"])["status_adm"]
-                      .apply(lambda s: pd.unique(s.astype(str))[-1])
-                      .reset_index(name="_status_adm"))
-            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
-            st_adm[["serie","numero"]] = st_adm[["serie","numero"]].astype(str)
-            out = out.merge(st_adm, on=["serie","numero"], how="left")
-            out["status_adm"] = np.where(out["_status_adm"].notna(), out["_status_adm"], out["status_adm"])
-            out = out.drop(columns=["_status_adm"])
-        if "status_flex" in g.columns:
-            st_fx = (g.groupby(["serie","numero"])["status_flex"]
-                     .apply(lambda s: pd.unique(s.astype(str))[-1])
-                     .reset_index(name="_status_flex"))
-            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
-            st_fx[["serie","numero"]] = st_fx[["serie","numero"]].astype(str)
-            out = out.merge(st_fx, on=["serie","numero"], how="left")
-            out["status_flex"] = np.where(out["_status_flex"].notna(), out["_status_flex"], out["status_flex"])
-            out = out.drop(columns=["_status_flex"])
-
-    return out
-
 # -----------------------------
 # UI
 
 
 
-
-def normalize_keys(df):
-    for col in ["serie", "numero"]:
-        if col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(".0", "", regex=False)
-                .str.replace(",", "", regex=False)
-                .str.strip()
-            )
-    return df
-
 def normalize_table(df: pd.DataFrame, fonte: str, dividir_por_100: bool=False) -> pd.DataFrame:
     """Normaliza qualquer tabela (CSV/Excel) para o formato padrão:
     data, serie, numero, valor, base, icms, fonte
-
-    Robusto para planilhas com cabeçalhos variados: tenta match exato (normalizado)
-    e, se não encontrar, usa heurísticas por substring (ex.: 'serie', 'num', 'valor', 'icms').
     """
-    if df is None or len(df) == 0:
+    if df is None or len(df)==0:
         return pd.DataFrame(columns=["data","serie","numero","valor","base","icms","fonte"])
-
-    # mapa: nome_normalizado -> nome_original
     cols = {norm_txt(c): c for c in df.columns}
 
     def pick(primary, fallbacks):
-        for k in [primary] + list(fallbacks):
+        for k in [primary]+fallbacks:
             if k in cols:
                 return cols[k]
         return None
 
-    def pick_contains(tokens, prefer_tokens=None):
-        """Retorna a primeira coluna cujo nome normalizado contém TODOS tokens.
-        prefer_tokens (opcional) prioriza colunas que contenham algum desses tokens."""
-        norm_names = list(cols.keys())
-        cand = []
-        for nn in norm_names:
-            ok = True
-            for t in tokens:
-                if t not in nn:
-                    ok = False
-                    break
-            if ok:
-                cand.append(nn)
-        if not cand:
-            return None
-        if prefer_tokens:
-            # prioriza quem contém token preferencial
-            for pt in prefer_tokens:
-                for nn in cand:
-                    if pt in nn:
-                        return cols[nn]
-        return cols[cand[0]]
-
-    # tentativas (match exato)
-    c_data = pick("data", ["dt", "data venda", "data movto", "data_movto", "dtemi", "dhemi"])
-    c_serie = pick("serie", ["série", "ser", "serie_nf", "serie nfe", "serie nfce", "serie cupom", "serie documento"])
-    c_num   = pick("numero", ["número", "num", "n nf", "nnf", "nf", "numero nf", "numero nota", "numero documento", "numero cupom", "no", "nro"])
-    c_val   = pick("valor", ["vlr total", "vltotal", "valor total", "vl tot", "vl total", "valor nota", "vnf", "v_nf", "total", "vlcont", "vltotnf"])
-    c_base  = pick("base", ["base icms", "vlbcicms", "bc icms", "vbc", "v_bc", "baseicms", "base_calculo", "base calculo"])
-    c_icms  = pick("icms", ["valor icms", "vlicms", "icms total", "vl icms", "vicms", "v_icms", "valor_do_icms"])
-
-    # heurísticas (se faltar)
-    if c_serie is None:
-        c_serie = pick_contains(["serie"])
-    if c_num is None:
-        c_num = pick_contains(["num"], prefer_tokens=["numero","nnf","nro"]) or pick_contains(["nf"], prefer_tokens=["numero","num"])
-    if c_val is None:
-        c_val = pick_contains(["valor"], prefer_tokens=["total","vl"]) or pick_contains(["total"])
-    if c_icms is None:
-        c_icms = pick_contains(["icms"], prefer_tokens=["valor","vl"])
-    if c_base is None:
-        # base costuma vir como 'base icms' / 'bc icms' / 'vbc'
-        c_base = pick_contains(["base"], prefer_tokens=["icms","bc","calculo"]) or pick_contains(["bc"], prefer_tokens=["icms"])
+    c_data = pick("data", ["dt", "data venda", "data movto", "data_movto", "dtemi", "dhEmi".lower()])
+    c_serie = pick("serie", ["série", "ser", "serie_nf", "serie nfe", "serie nfce"])
+    c_num = pick("numero", ["número", "num", "n°", "nnf", "nf", "numero nf", "numero nota"])
+    c_val = pick("valor", ["vlr total", "vltotal", "valor total", "vl tot", "vl total", "valor nota", "vnf", "v_nf", "total"])
+    c_base = pick("base", ["base icms", "vlbcicms", "bc icms", "vbc", "v_bc", "baseicms"])
+    c_icms = pick("icms", ["valor icms", "vlicms", "icms total", "vl icms", "vicms", "v_icms"])
 
     out = pd.DataFrame()
     out["data"] = df[c_data].astype(str).str[:10] if c_data is not None else ""
@@ -1117,24 +763,22 @@ def normalize_table(df: pd.DataFrame, fonte: str, dividir_por_100: bool=False) -
         return pd.to_numeric(s, errors="coerce")
 
     out["valor"] = to_num(df[c_val]) if c_val is not None else np.nan
-    out["base"]  = to_num(df[c_base]) if c_base is not None else np.nan
-    out["icms"]  = to_num(df[c_icms]) if c_icms is not None else np.nan
+    out["base"] = to_num(df[c_base]) if c_base is not None else np.nan
+    out["icms"] = to_num(df[c_icms]) if c_icms is not None else np.nan
 
     if dividir_por_100:
         out["valor"] = out["valor"] / 100.0
-        out["base"]  = out["base"] / 100.0
-        out["icms"]  = out["icms"] / 100.0
+        out["base"] = out["base"] / 100.0
+        out["icms"] = out["icms"] / 100.0
 
     out["fonte"] = fonte
 
     # limpeza / tipos
     out = out.dropna(subset=["numero"])
-    # serie pode vir vazia em algumas planilhas: tenta numérico, senão 0
-    out["serie"]  = pd.to_numeric(out["serie"], errors="coerce").fillna(0).astype(int)
+    out["serie"] = pd.to_numeric(out["serie"], errors="coerce").fillna(0).astype(int)
     out["numero"] = pd.to_numeric(out["numero"], errors="coerce").astype(int)
     for c in ["valor","base","icms"]:
         out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0.0).astype(float)
-
     return out
 
 def read_csv_any(file_like, fonte: str = "SEFAZ", dividir_por_100: bool = False):
@@ -1228,91 +872,91 @@ def upload_block(col, title, desc, key, border_class, types):
         up = st.file_uploader(" ", type=types, key=key, label_visibility="collapsed")
         if up is not None:
             st.markdown(f'<span class="small-pill ok">✅ {up.name}</span>', unsafe_allow_html=True)
-
+        else:
             st.markdown('<span class="small-pill">⬆️ Clique ou arraste o arquivo</span>', unsafe_allow_html=True)
         st.markdown("""</div>""", unsafe_allow_html=True)
         return up
 
 
-def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> dict:
-    """Calcula KPIs do painel.
-
-    IMPORTANTE:
-    - A tabela (alerts_df) só contém *problemas* (ausências/divergências/múltiplos).
-      Então "conferidas" não pode ser contada dentro dela.
-    - Todos os contadores (conferidas/divergentes/ausentes) devem ser por NOTA (série+número),
-      e não por linha, porque uma mesma nota pode gerar mais de um alerta.
+def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame):
+    """Métricas do painel (foco em valores e presença).
+    - Total de notas: quantidade de notas na SEFAZ (desconsidera canceladas)
+    - Valor total SEFAZ: soma do valor de todas as notas na SEFAZ
+    - Total ICMS apurado: soma do ICMS de todas as notas na SEFAZ
+    - Conferidas: notas presentes nas 3 fontes (SEFAZ + ADM + FLEX)
+    - Divergentes: notas presentes (no mínimo) em SEFAZ e FLEX/ADM com divergência de valor/base/icms
+    - Ausentes ADM/FLEX: notas da SEFAZ que não aparecem na fonte
     """
-    sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
-    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
+    sef = sefaz_df.copy() if sefaz_df is not None else pd.DataFrame()
+    adm = adm_df.copy() if adm_df is not None else pd.DataFrame()
+    flx = flex_df.copy() if flex_df is not None else pd.DataFrame()
 
-    def _sum_numeric(df: pd.DataFrame, col: str) -> float:
-        if df is None or df.empty or col not in df.columns:
-            return 0.0
-        s = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        return float(s.sum())
+    if not sef.empty and "cancelada" in sef.columns:
+        sef = sef[~sef["cancelada"].fillna(False)]
 
-    def _key_df(df: pd.DataFrame) -> pd.DataFrame:
+    def key(df):
         if df is None or df.empty:
-            return pd.DataFrame(columns=['serie','numero'])
-        if not {'serie','numero'}.issubset(df.columns):
-            return pd.DataFrame(columns=['serie','numero'])
-        k = df[['serie','numero']].dropna().copy()
-        # normaliza tipos pra evitar mismatch 201 vs 201.0
-        k['serie'] = k['serie'].astype(str).str.replace('.0','',regex=False).str.strip()
-        k['numero'] = k['numero'].astype(str).str.replace('.0','',regex=False).str.strip()
-        return k
+            return pd.Series([], dtype="object")
+        if "serie" not in df.columns or "numero" not in df.columns:
+            return pd.Series([], dtype="object")
+        return df["serie"].astype(str) + "-" + df["numero"].astype(str)
 
-    # Total de notas: SEMPRE vem do SEFAZ (universo)
-    keys_sefaz = _key_df(sef)
-    total_notas = int(keys_sefaz.drop_duplicates().shape[0]) if not keys_sefaz.empty else int(len(sef))
+    # dedup por chave (fica a primeira ocorrência)
+    if not sef.empty:
+        sef["_k"] = key(sef)
+        sef = sef.dropna(subset=["_k"]).drop_duplicates("_k", keep="first")
+    if not adm.empty:
+        adm["_k"] = key(adm)
+        adm = adm.dropna(subset=["_k"]).drop_duplicates("_k", keep="first")
+    if not flx.empty:
+        flx["_k"] = key(flx)
+        flx = flx.dropna(subset=["_k"]).drop_duplicates("_k", keep="first")
 
-    # Totais monetários: preferir SEFAZ direto (é o "universo").
-    # Se por algum motivo não existir, tenta pegar das colunas *_sefaz do df final.
-    valor_total = _sum_numeric(sef, 'valor') or _sum_numeric(al, 'valor_sefaz')
-    icms_total = _sum_numeric(sef, 'icms') or _sum_numeric(al, 'icms_sefaz')
+    total_notas = int(len(sef)) if not sef.empty else 0
+    valor_total = float(sef["valor"].fillna(0).sum()) if (not sef.empty and "valor" in sef.columns) else 0.0
+    icms_total = float(sef["icms"].fillna(0).sum()) if (not sef.empty and "icms" in sef.columns) else 0.0
 
-    # Se não há alertas, então tudo conferido (desde que ADM/FLEX carregados).
-    keys_alertas = _key_df(al)
-    total_problemas = int(keys_alertas.drop_duplicates().shape[0]) if not keys_alertas.empty else 0
+    ks = set(sef["_k"].tolist()) if (not sef.empty and "_k" in sef.columns) else set()
+    ka = set(adm["_k"].tolist()) if (not adm.empty and "_k" in adm.columns) else set()
+    kf = set(flx["_k"].tolist()) if (not flx.empty and "_k" in flx.columns) else set()
 
-    # Divergentes (por nota)
+    conferidas = int(len(ks & ka & kf)) if ks else 0
+    aus_adm = int(len(ks - ka)) if ks else 0
+    aus_flex = int(len(ks - kf)) if ks else 0
+
+    # Divergentes: tenta usar alerts (mais fiel à lógica do app); se não houver, calcula por merge.
     divergentes = 0
-    if not al.empty and 'motivo' in al.columns and {'serie','numero'}.issubset(al.columns):
-        mask_div = al['motivo'].astype(str).str.contains('Diverg', case=False, na=False)
-        divergentes = int(_key_df(al[mask_div]).drop_duplicates().shape[0])
+    if alerts_df is not None and not alerts_df.empty and "motivo" in alerts_df.columns:
+        tmp = alerts_df.copy()
+        if "serie" in tmp.columns and "numero" in tmp.columns:
+            tmp["_k"] = tmp["serie"].astype(str) + "-" + tmp["numero"].astype(str)
+            divergentes = int(tmp[tmp["motivo"].astype(str).str.contains("Divergência", case=False, na=False)]["_k"].nunique())
+    else:
+        # merge sefaz x adm/flex e compara colunas numéricas (tolerância pequena)
+        def compare_to(df_other):
+            if sef.empty or df_other.empty:
+                return set()
+            mrg = sef.merge(df_other[["_k","valor","base","icms"]], on="_k", how="inner", suffixes=("_sef","_oth"))
+            out=set()
+            for col in ["valor","base","icms"]:
+                a = mrg.get(f"{col}_sef")
+                b = mrg.get(f"{col}_oth")
+                if a is None or b is None:
+                    continue
+                diff = (a.fillna(0) - b.fillna(0)).abs()
+                out |= set(mrg.loc[diff > 0.01, "_k"].tolist())
+            return out
+        divergentes = int(len(compare_to(adm) | compare_to(flx)))
 
-    # Ausentes (por nota)
-    ausentes_adm = 0
-    if not al.empty and 'status_adm' in al.columns and {'serie','numero'}.issubset(al.columns):
-        mask_aus = al['status_adm'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])
-        ausentes_adm = int(_key_df(al[mask_aus]).drop_duplicates().shape[0])
-
-    ausentes_flex = 0
-    if not al.empty and 'status_flex' in al.columns and {'serie','numero'}.issubset(al.columns):
-        mask_aus = al['status_flex'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])
-        ausentes_flex = int(_key_df(al[mask_aus]).drop_duplicates().shape[0])
-
-    # Conferidas: total - notas que apareceram em QUALQUER alerta
-    conferidas = max(total_notas - total_problemas, 0)
-
-    return {
-        # chaves usadas no painel atual
-        'valor_total': float(valor_total),
-        'icms_total': float(icms_total),
-        'total_notas': int(total_notas),
-        'conferidas': int(conferidas),
-        'divergentes': int(divergentes),
-        'ausentes_adm': int(ausentes_adm),
-        'ausentes_flex': int(ausentes_flex),
-
-        # aliases (mantém compatibilidade)
-        'total_valor_sefaz': float(valor_total),
-        'total_icms_apurado': float(icms_total),
-    }
-
-
-
+    return dict(
+        total=total_notas,
+        valor_total=valor_total,
+        icms_total=icms_total,
+        conferidas=conferidas,
+        divergentes=divergentes,
+        aus_adm=aus_adm,
+        aus_flex=aus_flex,
+    )
 def style_table(df):
     if df is None or df.empty:
         return df
@@ -1356,7 +1000,6 @@ sefaz_df = pd.DataFrame()
 adm_df = pd.DataFrame()
 flex_df = pd.DataFrame()
 alerts = pd.DataFrame()
-full_df = pd.DataFrame()
 
 if up_sefaz is not None:
     name = up_sefaz.name.lower()
@@ -1366,7 +1009,7 @@ if up_sefaz is not None:
         sefaz_df = read_sefaz_zip(up_sefaz)
     elif name.endswith(".xlsx") or name.endswith(".xls"):
         sefaz_df = read_excel_any(up_sefaz, fonte="SEFAZ", dividir_por_100=False)
-
+    else:
         sefaz_df = read_sefaz_xml_file(up_sefaz)
 
 
@@ -1382,67 +1025,12 @@ if up_sefaz is not None and (sefaz_df is None or sefaz_df.empty):
 if not sefaz_df.empty and "cancelada" in sefaz_df.columns:
     sefaz_df = sefaz_df[~sefaz_df["cancelada"].fillna(False)]
 
-ok_sefaz = ok_adm = ok_flex = False
 if not sefaz_df.empty:
     alerts = audit(sefaz_df, adm_df, flex_df)
-if ok_sefaz and ok_adm and ok_flex:
-    full_df = build_full_table(sefaz_df, adm_df, flex_df, alerts)
-else:
-    full_df = pd.DataFrame()
 
 st.write("")
 
 m = calc_metrics(sefaz_df, adm_df, flex_df, alerts)
-# Se a tabela completa existir, recalcula contadores (mais fiel ao filtro UI)
-if isinstance(full_df, pd.DataFrame) and not full_df.empty:
-    try:
-        m['total_notas'] = int(full_df[['serie','numero']].drop_duplicates().shape[0])
-        m['divergentes'] = int(full_df[full_df['motivo'].astype(str).str.contains('diverg', case=False, na=False)][['serie','numero']].drop_duplicates().shape[0])
-        m['ausentes_adm'] = int(full_df[full_df['status_adm'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])][['serie','numero']].drop_duplicates().shape[0])
-        m['ausentes_flex'] = int(full_df[full_df['status_flex'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])][['serie','numero']].drop_duplicates().shape[0])
-        m['conferidas'] = int(full_df[full_df['motivo'].astype(str).str.lower().eq('conferido')][['serie','numero']].drop_duplicates().shape[0])
-    except Exception:
-        pass
-# Fallback: se por algum motivo o DataFrame SEFAZ não ficou disponível neste ciclo,
-# calculamos os cards a partir da própria tabela de alertas (que já contém valor/base/icms da SEFAZ).
-if (m.get("total_notas", 0) == 0) and (not alerts.empty) and ("valor_sefaz" in alerts.columns):
-    sef = alerts[alerts["valor_sefaz"].notna()].copy()
-    # chaves únicas por (serie, numero) para não contar duplicado
-    if "serie" in sef.columns and "numero" in sef.columns:
-        sef["_k"] = sef["serie"].astype(str) + "-" + sef["numero"].astype(str)
-        total_notas = sef["_k"].nunique()
-
-        total_notas = len(sef)
-    valor_total = pd.to_numeric(sef["valor_sefaz"], errors="coerce").fillna(0).sum()
-    icms_total = pd.to_numeric(sef.get("icms_sefaz", 0), errors="coerce").fillna(0).sum()
-
-    # conferidas = OK nos 3
-    conferidas = 0
-    if "status_adm" in alerts.columns and "status_flex" in alerts.columns:
-        conferidas = int(((alerts["status_adm"] == "OK") & (alerts["status_flex"] == "OK") & (~alerts["motivo"].astype(str).str.contains("Diverg", case=False, na=False))).sum())
-
-    divergentes = 0
-    if "motivo" in alerts.columns:
-        divergentes = int(alerts["motivo"].astype(str).str.contains("Diverg", case=False, na=False).sum())
-
-    aus_adm = 0
-    if "status_adm" in alerts.columns:
-        aus_adm = int(alerts["status_adm"].isin(["NAO_ENCONTRADO", "SEM_ARQUIVO"]).sum())
-
-    aus_flex = 0
-    if "status_flex" in alerts.columns:
-        aus_flex = int(alerts["status_flex"].isin(["NAO_ENCONTRADO", "SEM_ARQUIVO"]).sum())
-
-    m.update({
-        "valor_total": float(valor_total),
-        "icms_total": float(icms_total),
-        "total_notas": int(total_notas),
-        "conferidas": int(conferidas),
-        "divergentes": int(divergentes),
-        "ausentes_adm": int(aus_adm),
-        "ausentes_flex": int(aus_flex),
-    })
-
 
 sum1, sum2 = st.columns(2, gap="large")
 with sum1:
@@ -1465,18 +1053,18 @@ def kpi(col, title, num, sub, variant, emoji):
         </div>
         ''', unsafe_allow_html=True)
 
-kpi(k1,"TOTAL DE NOTAS", m.get("total_notas", 0), "Notas analisadas", "neutral","🧾")
-kpi(k2,"CONFERIDAS", m.get("conferidas", 0), "Compatíveis", "success","✅")
-kpi(k3,"DIVERGENTES", m.get("divergentes", 0), "Valores diferentes", "danger","⛔")
-kpi(k4,"AUSENTES ADM", m.get("ausentes_adm", 0), "Faltando no ADM", "warn","⚠️")
-kpi(k5,"AUSENTES FLEX", m.get("ausentes_flex", 0), "Faltando no Flex", "warn","⚠️")
+kpi(k1,"TOTAL DE NOTAS", m["total"], "Notas analisadas", "neutral","🧾")
+kpi(k2,"CONFERIDAS", m["conferidas"], "Compatíveis", "success","✅")
+kpi(k3,"DIVERGENTES", m["divergentes"], "Valores diferentes", "danger","⛔")
+kpi(k4,"AUSENTES ADM", m["aus_adm"], "Faltando no ADM", "warn","⚠️")
+kpi(k5,"AUSENTES FLEX", m["aus_flex"], "Faltando no Flex", "warn","⚠️")
 
 st.write("")
 st.markdown('<div class="l-card"><h3 style="margin:0;font-weight:900;">Resultado da Conferência</h3><p style="margin:6px 0 0 0;color:rgba(17,24,39,.6);font-size:13px;">Clique e filtre para ver os detalhes completos</p></div>', unsafe_allow_html=True)
 st.write("")
 
-tabs = ["Todos", "Conferidos", "Divergentes", "Ausentes ADM", "Ausentes Flex"]
-counts = {"Todos": m.get("total_notas", 0), "Conferidos": m.get("conferidas", 0), "Divergentes": m.get("divergentes", 0), "Ausentes ADM": m.get("ausentes_adm", 0), "Ausentes Flex": m.get("ausentes_flex", 0)}
+tabs = ["Todos", "Conferidos", "Divergentes", "Ausentes ADM", "Ausentes FLEX"]
+counts = {"Todos": m["total"], "Conferidos": m["conferidas"], "Divergentes": m["divergentes"], "Ausentes ADM": m["aus_adm"], "Ausentes FLEX": m["aus_flex"]}
 choice = st.radio(" ", [f"{t}  ({counts[t]})" for t in tabs], horizontal=True, label_visibility="collapsed")
 choice_key = choice.split("  (")[0]
 
@@ -1484,21 +1072,27 @@ search = st.text_input("Buscar (número, série ou motivo)", placeholder="Ex.: 1
 
 if sefaz_df.empty:
     st.info("Carregue o arquivo SEFAZ para ver os resultados.")
-
-    base = (full_df.copy() if isinstance(full_df, pd.DataFrame) and not full_df.empty else alerts.copy())
+else:
+    base = alerts.copy()
 
     if choice_key == "Divergentes":
-        base = base[base["motivo"].fillna("").str.contains("diverg", case=False)] if not base.empty else base
+        base = base[base["motivo"].fillna("").str.contains("Divergência", case=False)] if not base.empty else base
     elif choice_key == "Ausentes ADM":
-        base = base[base.get("status_adm").astype(str).isin(["NAO_ENCONTRADO","SEM_ARQUIVO"])] if not base.empty else base
-    elif choice_key == "Ausentes Flex":
-        base = base[base.get("status_flex").astype(str).isin(["NAO_ENCONTRADO","SEM_ARQUIVO"])] if not base.empty else base
+        base = base[base.get("status_adm") == "NAO_ENCONTRADO"] if not base.empty else base
+    elif choice_key == "Ausentes FLEX":
+        base = base[base.get("status_flex") == "NAO_ENCONTRADO"] if not base.empty else base
     elif choice_key == "Conferidos":
-        # conferidos agora vêm da tabela completa (motivo = Conferido)
         if base.empty:
-            base = base
-
-            base = base[base.get("motivo").astype(str).str.lower().eq("conferido")]
+            conf = sefaz_df.copy()
+        else:
+            problem = base[["serie","numero"]].dropna().drop_duplicates()
+            conf = sefaz_df.merge(problem.assign(_p=1), on=["serie","numero"], how="left")
+            conf = conf[conf["_p"].isna()].drop(columns=["_p"])
+        conf = conf.copy()
+        conf["status_adm"] = "OK"
+        conf["status_flex"] = "OK"
+        conf["motivo"] = "Conferido"
+        base = conf
 
     if search and not base.empty:
         s = search.lower().strip()
@@ -1514,7 +1108,7 @@ if sefaz_df.empty:
 
     if base.empty:
         st.success("Sem registros nesse filtro ✅")
-
+    else:
         st.dataframe(style_table(base), use_container_width=True, height=520)
 
 st.write("")
