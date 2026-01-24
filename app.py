@@ -12,6 +12,173 @@ import os
 st.set_page_config(page_title="Auditor Fiscal NFC-e", page_icon="🛡️", layout="wide")
 
 # -----------------------------
+# Premium UI (Lovable-inspired)
+# -----------------------------
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root{
+  --bg: #0b1220;
+  --card: rgba(17,24,39,.72);
+  --card2: rgba(17,24,39,.88);
+  --border: rgba(148,163,184,.18);
+  --muted: rgba(226,232,240,.65);
+  --text: rgba(226,232,240,.95);
+
+  --primary: #3b82f6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  --grad-hero: linear-gradient(135deg, #3b82f6 0%, #7c3aed 50%, #db2777 100%);
+  --grad-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --grad-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --grad-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --shadow2: 0 20px 45px rgba(0,0,0,.45);
+  --r: 18px;
+}
+
+html, body, [class*="css"]  { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+/* Page background */
+.stApp{
+  background: radial-gradient(1200px 600px at 80% -20%, rgba(59,130,246,.22), transparent 60%),
+              radial-gradient(900px 500px at -10% 10%, rgba(16,185,129,.18), transparent 55%),
+              radial-gradient(1000px 600px at 50% 120%, rgba(245,158,11,.12), transparent 60%),
+              var(--bg);
+}
+
+/* Reduce Streamlit chrome */
+header[data-testid="stHeader"], footer { visibility: hidden; height: 0; }
+
+/* Generic card */
+.l-card{ 
+  border: 1px solid var(--border);
+  background: rgba(17,24,39,.55);
+  backdrop-filter: blur(14px);
+  border-radius: var(--r);
+  padding: 18px 18px;
+  box-shadow: var(--shadow);
+}
+
+/* Header hero */
+.l-hero{
+  border: 1px solid var(--border);
+  background: rgba(17,24,39,.55);
+  backdrop-filter: blur(18px);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  box-shadow: var(--shadow);
+  display:flex; align-items:center; justify-content:space-between;
+  position: relative; overflow:hidden;
+}
+.l-hero:before{
+  content:"";
+  position:absolute; inset:-2px;
+  background: radial-gradient(500px 220px at 80% 0%, rgba(59,130,246,.18), transparent 70%),
+              radial-gradient(420px 220px at 0% 30%, rgba(16,185,129,.14), transparent 70%);
+  pointer-events:none;
+}
+.l-hero-left{ display:flex; gap:14px; align-items:center; position:relative; }
+.l-icon{
+  width:46px; height:46px; border-radius: 16px;
+  background: var(--grad-hero);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 0 40px rgba(59,130,246,.25);
+  font-size:22px;
+}
+.l-title{ margin:0; font-weight:900; font-size:20px; letter-spacing:-.02em; color: var(--text);} 
+.l-sub{ margin:2px 0 0 0; font-weight:600; font-size:12.5px; color: var(--muted);} 
+.l-badge{
+  position:relative;
+  display:flex; gap:8px; align-items:center;
+  border: 1px solid rgba(16,185,129,.25);
+  background: rgba(16,185,129,.12);
+  color: #34d399;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight:800; font-size:12.5px;
+}
+
+/* Upload cards */
+.upload-card{
+  border: 2px dashed var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.45);
+  transition: all .25s ease;
+  box-shadow: var(--shadow);
+}
+.upload-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); border-color: rgba(148,163,184,.35); }
+.upload-card.blue:hover{ border-color: rgba(59,130,246,.55); background: rgba(59,130,246,.05); }
+.upload-card.green:hover{ border-color: rgba(16,185,129,.55); background: rgba(16,185,129,.05); }
+.upload-card.amber:hover{ border-color: rgba(245,158,11,.55); background: rgba(245,158,11,.05); }
+.upload-title{ font-weight:900; font-size:15px; margin-top:8px; }
+.upload-desc{ margin:6px 0 12px 0; color: var(--muted); font-size:12.5px; font-weight:600; }
+
+.small-pill{
+  display:inline-flex; gap:8px; align-items:center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px dashed rgba(148,163,184,.25);
+  color: var(--muted);
+  font-weight:700;
+  font-size:12.5px;
+}
+.small-pill.ok{ border-style:solid; background: rgba(148,163,184,.08); color: rgba(226,232,240,.92); }
+
+/* Big gradients (Valor/ICMS) */
+.grad{
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.55);
+  box-shadow: var(--shadow);
+  position: relative; overflow:hidden;
+}
+.grad:before{
+  content:""; position:absolute; inset:-2px; opacity:.55;
+  background: radial-gradient(400px 160px at 20% 0%, rgba(59,130,246,.35), transparent 60%);
+}
+.grad.bluepurp:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(59,130,246,.38), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(124,58,237,.30), transparent 65%); }
+.grad.green:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(16,185,129,.35), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(52,211,153,.18), transparent 65%); }
+.grad-label{ position:relative; margin:0; color: var(--muted); font-weight:800; letter-spacing:.06em; text-transform:uppercase; font-size:12px; }
+.grad-value{ position:relative; margin:8px 0 0 0; color: var(--text); font-weight:950; font-size:22px; }
+
+/* KPI cards (StatCard vibe) */
+.kpi{
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.55);
+  box-shadow: var(--shadow);
+  transition: all .25s ease;
+  display:flex; align-items:flex-start; justify-content:space-between;
+  position:relative; overflow:hidden;
+}
+.kpi:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); }
+.kpi:before{ content:""; position:absolute; right:-28px; top:-28px; width:120px; height:120px; border-radius:999px; background: rgba(59,130,246,.10); opacity:0; transition: opacity .25s ease; }
+.kpi:hover:before{ opacity:1; }
+.kpi h4{ margin:0; color: var(--muted); font-size:12px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+.kpi .num{ margin-top:10px; font-size:28px; font-weight:950; color: var(--text); letter-spacing:-.02em; }
+.kpi .sub{ margin-top:6px; color: var(--muted); font-size:12.5px; font-weight:650; }
+.kpi .dot{ width:44px; height:44px; border-radius: 14px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:900; }
+.kpi.neutral .dot{ background: var(--grad-hero); box-shadow: 0 0 40px rgba(59,130,246,.22); }
+.kpi.success .dot{ background: var(--grad-success); box-shadow: 0 0 40px rgba(16,185,129,.22); }
+.kpi.warn .dot{ background: var(--grad-warning); box-shadow: 0 0 40px rgba(245,158,11,.20); }
+.kpi.danger .dot{ background: var(--grad-danger); box-shadow: 0 0 40px rgba(239,68,68,.20); }
+
+/* Radio tabs spacing */
+div[role="radiogroup"]{ gap: 16px; }
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# -----------------------------
 # Utils
 # -----------------------------
 def norm_txt(s):
@@ -879,61 +1046,82 @@ def upload_block(col, title, desc, key, border_class, types):
 
 
 def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> dict:
+    """Calcula KPIs do painel.
+
+    IMPORTANTE:
+    - A tabela (alerts_df) só contém *problemas* (ausências/divergências/múltiplos).
+      Então "conferidas" não pode ser contada dentro dela.
+    - Todos os contadores (conferidas/divergentes/ausentes) devem ser por NOTA (série+número),
+      e não por linha, porque uma mesma nota pode gerar mais de um alerta.
     """
-    Painel (cards) baseado no dataframe final (alerts_df), porque é ele que alimenta a tabela.
-    Assim, mesmo quando ADM/FLEX não forem carregados, os totais do SEFAZ aparecem.
-    """
-    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
     sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
+    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
 
     def _sum_numeric(df: pd.DataFrame, col: str) -> float:
-        if df.empty or col not in df.columns:
+        if df is None or df.empty or col not in df.columns:
             return 0.0
-        s = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        s = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return float(s.sum())
 
-    def _count_notes(df: pd.DataFrame) -> int:
-        if df.empty:
-            return 0
-        if {"serie","numero"}.issubset(df.columns):
-            return int(df[["serie","numero"]].dropna().drop_duplicates().shape[0])
-        return int(len(df))
+    def _key_df(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame(columns=['serie','numero'])
+        if not {'serie','numero'}.issubset(df.columns):
+            return pd.DataFrame(columns=['serie','numero'])
+        k = df[['serie','numero']].dropna().copy()
+        # normaliza tipos pra evitar mismatch 201 vs 201.0
+        k['serie'] = k['serie'].astype(str).str.replace('.0','',regex=False).str.strip()
+        k['numero'] = k['numero'].astype(str).str.replace('.0','',regex=False).str.strip()
+        return k
 
-    # Totais do SEFAZ (preferir colunas da tabela final)
-    total_valor_sefaz = _sum_numeric(al, "valor_sefaz") or _sum_numeric(sef, "valor")
-    total_icms_apurado = _sum_numeric(al, "icms_sefaz") or _sum_numeric(sef, "icms")
-    total_notas = _count_notes(al[al.get("valor_sefaz").notna()] if (not al.empty and "valor_sefaz" in al.columns) else al) or _count_notes(sef)
+    # Total de notas: SEMPRE vem do SEFAZ (universo)
+    keys_sefaz = _key_df(sef)
+    total_notas = int(keys_sefaz.drop_duplicates().shape[0]) if not keys_sefaz.empty else int(len(sef))
 
-    # Contagens de status na tabela final
-    conferidas = divergentes = ausentes_adm = ausentes_flex = 0
-    if not al.empty:
-        if "status_adm" in al.columns:
-            ausentes_adm = int(al["status_adm"].astype(str).isin(["SEM_ARQUIVO","NAO_ENCONTRADO"]).sum())
-        if "status_flex" in al.columns:
-            ausentes_flex = int(al["status_flex"].astype(str).isin(["SEM_ARQUIVO","NAO_ENCONTRADO"]).sum())
+    # Totais monetários: preferir SEFAZ direto (é o "universo").
+    # Se por algum motivo não existir, tenta pegar das colunas *_sefaz do df final.
+    valor_total = _sum_numeric(sef, 'valor') or _sum_numeric(al, 'valor_sefaz')
+    icms_total = _sum_numeric(sef, 'icms') or _sum_numeric(al, 'icms_sefaz')
 
-        ok_adm = (al["status_adm"].astype(str) == "OK") if "status_adm" in al.columns else pd.Series([False]*len(al))
-        ok_flex = (al["status_flex"].astype(str) == "OK") if "status_flex" in al.columns else pd.Series([False]*len(al))
-        no_div = ~al["motivo"].astype(str).str.contains("Diverg", case=False, na=False) if "motivo" in al.columns else pd.Series([True]*len(al))
+    # Se não há alertas, então tudo conferido (desde que ADM/FLEX carregados).
+    keys_alertas = _key_df(al)
+    total_problemas = int(keys_alertas.drop_duplicates().shape[0]) if not keys_alertas.empty else 0
 
-        conferidas = int((ok_adm & ok_flex & no_div).sum())
-        divergentes = int(al["motivo"].astype(str).str.contains("Diverg", case=False, na=False).sum()) if "motivo" in al.columns else 0
+    # Divergentes (por nota)
+    divergentes = 0
+    if not al.empty and 'motivo' in al.columns and {'serie','numero'}.issubset(al.columns):
+        mask_div = al['motivo'].astype(str).str.contains('Diverg', case=False, na=False)
+        divergentes = int(_key_df(al[mask_div]).drop_duplicates().shape[0])
+
+    # Ausentes (por nota)
+    ausentes_adm = 0
+    if not al.empty and 'status_adm' in al.columns and {'serie','numero'}.issubset(al.columns):
+        mask_aus = al['status_adm'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])
+        ausentes_adm = int(_key_df(al[mask_aus]).drop_duplicates().shape[0])
+
+    ausentes_flex = 0
+    if not al.empty and 'status_flex' in al.columns and {'serie','numero'}.issubset(al.columns):
+        mask_aus = al['status_flex'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])
+        ausentes_flex = int(_key_df(al[mask_aus]).drop_duplicates().shape[0])
+
+    # Conferidas: total - notas que apareceram em QUALQUER alerta
+    conferidas = max(total_notas - total_problemas, 0)
 
     return {
-        # nomes "canônicos" (interno)
-        "total_valor_sefaz": total_valor_sefaz,
-        "total_icms_apurado": total_icms_apurado,
+        # chaves usadas no painel atual
+        'valor_total': float(valor_total),
+        'icms_total': float(icms_total),
+        'total_notas': int(total_notas),
+        'conferidas': int(conferidas),
+        'divergentes': int(divergentes),
+        'ausentes_adm': int(ausentes_adm),
+        'ausentes_flex': int(ausentes_flex),
 
-        # nomes usados no painel (UI)
-        "valor_total": total_valor_sefaz,
-        "icms_total": total_icms_apurado,
-
-        "total_notas": total_notas,
-        "conferidas": conferidas,
-        "divergentes": divergentes,
-        "ausentes_adm": ausentes_adm,
-        "ausentes_flex": ausentes_flex,
+        # aliases (mantém compatibilidade)
+        'total_valor_sefaz': float(valor_total),
+        'total_icms_apurado': float(icms_total),
     }
+
 
 
 def style_table(df):
