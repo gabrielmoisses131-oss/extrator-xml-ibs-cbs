@@ -1384,11 +1384,10 @@ if not sefaz_df.empty and "cancelada" in sefaz_df.columns:
 
 if not sefaz_df.empty:
     alerts = audit(sefaz_df, adm_df, flex_df)
-    if ok_sefaz and ok_adm and ok_flex:
+if ok_sefaz and ok_adm and ok_flex:
     full_df = build_full_table(sefaz_df, adm_df, flex_df, alerts)
 else:
     full_df = pd.DataFrame()
-
 
 st.write("")
 
