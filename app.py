@@ -1,3 +1,1040 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+from io import BytesIO
+from datetime import datetime
+from dateutil import parser as dtparser
+from lxml import etree
+import zipfile
+import re
+import os
+
+# ============================
+# Leitura/normalização robusta (ADM/FLEX)
+# ============================
+
+def _norm_name(s: str) -> str:
+    s = str(s).strip().lower()
+    repl = {"ç":"c","ã":"a","á":"a","à":"a","â":"a","é":"e","ê":"e","í":"i","ó":"o","ô":"o","õ":"o","ú":"u"}
+    for a,b in repl.items():
+        s = s.replace(a,b)
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def _digits_only(x):
+    s = str(x).strip()
+    s = s.replace(".0", "")
+    s = re.sub(r"[^0-9]", "", s)
+    return s
+
+def _pick_col(df, wants):
+    cols = list(df.columns)
+    norm = {c:_norm_name(c) for c in cols}
+    for w in wants:
+        for c,n in norm.items():
+            if w in n:
+                return c
+    return None
+
+def _ensure_serie_numero(df: pd.DataFrame) -> pd.DataFrame:
+    # mapeia nomes comuns -> serie/numero
+    if "serie" not in df.columns:
+        c = _pick_col(df, ["serie", "ser"])
+        if c: df = df.rename(columns={c:"serie"})
+    if "numero" not in df.columns:
+        c = _pick_col(df, ["numero", "nro", "num", "documento", "nf", "nfce"])
+        if c: df = df.rename(columns={c:"numero"})
+
+    # normaliza valores
+    if "serie" in df.columns:
+        df["serie"] = df["serie"].apply(_digits_only).replace("", np.nan)
+        df["serie"] = df["serie"].astype("string").str.lstrip("0").replace("", np.nan)
+    if "numero" in df.columns:
+        df["numero"] = df["numero"].apply(_digits_only).replace("", np.nan)
+        df["numero"] = df["numero"].astype("string").str.lstrip("0").replace("", np.nan)
+
+    return df
+
+def read_excel_smart(uploaded_file):
+    """Lê Excel tentando descobrir a linha do cabeçalho (quando vem com títulos acima)."""
+    try:
+        raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+        best_i, best_score = 0, -1
+        for i in range(min(30, len(raw))):
+            vals = [_norm_name(v) for v in raw.iloc[i].tolist()]
+            score = 0
+            if any("serie" in v or v == "ser" for v in vals): score += 2
+            if any(("numero" in v) or (v == "num") or ("nro" in v) or (v == "nf") for v in vals): score += 2
+            if any(("valor" in v) or ("icms" in v) or ("base" in v) for v in vals): score += 1
+            if score > best_score:
+                best_i, best_score = i, score
+        df = pd.read_excel(uploaded_file, sheet_name=0, header=best_i)
+        df = df.dropna(axis=1, how="all")
+        return df
+    except Exception:
+        return pd.read_excel(uploaded_file, sheet_name=0)
+
+
+st.set_page_config(page_title="Auditor Fiscal NFC-e", page_icon="🛡️", layout="wide")
+
+# -----------------------------
+# Premium UI (Lovable-inspired)
+# -----------------------------
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root{
+  --bg: #0b1220;
+  --card: rgba(17,24,39,.72);
+  --card2: rgba(17,24,39,.88);
+  --border: rgba(148,163,184,.18);
+  --muted: rgba(226,232,240,.65);
+  --text: rgba(226,232,240,.95);
+
+  --primary: #3b82f6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  --grad-hero: linear-gradient(135deg, #3b82f6 0%, #7c3aed 50%, #db2777 100%);
+  --grad-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --grad-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --grad-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --shadow2: 0 20px 45px rgba(0,0,0,.45);
+  --r: 18px;
+}
+
+html, body, [class*="css"]  { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+/* Page background */
+.stApp{
+  background: radial-gradient(1200px 600px at 80% -20%, rgba(59,130,246,.22), transparent 60%),
+              radial-gradient(900px 500px at -10% 10%, rgba(16,185,129,.18), transparent 55%),
+              radial-gradient(1000px 600px at 50% 120%, rgba(245,158,11,.12), transparent 60%),
+              var(--bg);
+}
+
+/* Reduce Streamlit chrome */
+header[data-testid="stHeader"], footer { visibility: hidden; height: 0; }
+
+/* Generic card */
+.l-card{ 
+  border: 1px solid var(--border);
+  background: rgba(17,24,39,.55);
+  backdrop-filter: blur(14px);
+  border-radius: var(--r);
+  padding: 18px 18px;
+  box-shadow: var(--shadow);
+}
+
+/* Header hero */
+.l-hero{
+  border: 1px solid var(--border);
+  background: rgba(17,24,39,.55);
+  backdrop-filter: blur(18px);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  box-shadow: var(--shadow);
+  display:flex; align-items:center; justify-content:space-between;
+  position: relative; overflow:hidden;
+}
+.l-hero:before{
+  content:"";
+  position:absolute; inset:-2px;
+  background: radial-gradient(500px 220px at 80% 0%, rgba(59,130,246,.18), transparent 70%),
+              radial-gradient(420px 220px at 0% 30%, rgba(16,185,129,.14), transparent 70%);
+  pointer-events:none;
+}
+.l-hero-left{ display:flex; gap:14px; align-items:center; position:relative; }
+.l-icon{
+  width:46px; height:46px; border-radius: 16px;
+  background: var(--grad-hero);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 0 40px rgba(59,130,246,.25);
+  font-size:22px;
+}
+.l-title{ margin:0; font-weight:900; font-size:20px; letter-spacing:-.02em; color: var(--text);} 
+.l-sub{ margin:2px 0 0 0; font-weight:600; font-size:12.5px; color: var(--muted);} 
+.l-badge{
+  position:relative;
+  display:flex; gap:8px; align-items:center;
+  border: 1px solid rgba(16,185,129,.25);
+  background: rgba(16,185,129,.12);
+  color: #34d399;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight:800; font-size:12.5px;
+}
+
+/* Upload cards */
+.upload-card{
+  border: 2px dashed var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.45);
+  transition: all .25s ease;
+  box-shadow: var(--shadow);
+}
+.upload-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); border-color: rgba(148,163,184,.35); }
+.upload-card.blue:hover{ border-color: rgba(59,130,246,.55); background: rgba(59,130,246,.05); }
+.upload-card.green:hover{ border-color: rgba(16,185,129,.55); background: rgba(16,185,129,.05); }
+.upload-card.amber:hover{ border-color: rgba(245,158,11,.55); background: rgba(245,158,11,.05); }
+.upload-title{ font-weight:900; font-size:15px; margin-top:8px; }
+.upload-desc{ margin:6px 0 12px 0; color: var(--muted); font-size:12.5px; font-weight:600; }
+
+.small-pill{
+  display:inline-flex; gap:8px; align-items:center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px dashed rgba(148,163,184,.25);
+  color: var(--muted);
+  font-weight:700;
+  font-size:12.5px;
+}
+.small-pill.ok{ border-style:solid; background: rgba(148,163,184,.08); color: rgba(226,232,240,.92); }
+
+/* Big gradients (Valor/ICMS) */
+.grad{
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.55);
+  box-shadow: var(--shadow);
+  position: relative; overflow:hidden;
+}
+.grad:before{
+  content:""; position:absolute; inset:-2px; opacity:.55;
+  background: radial-gradient(400px 160px at 20% 0%, rgba(59,130,246,.35), transparent 60%);
+}
+.grad.bluepurp:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(59,130,246,.38), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(124,58,237,.30), transparent 65%); }
+.grad.green:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(16,185,129,.35), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(52,211,153,.18), transparent 65%); }
+.grad-label{ position:relative; margin:0; color: var(--muted); font-weight:800; letter-spacing:.06em; text-transform:uppercase; font-size:12px; }
+.grad-value{ position:relative; margin:8px 0 0 0; color: var(--text); font-weight:950; font-size:22px; }
+
+/* KPI cards (StatCard vibe) */
+.kpi{
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.55);
+  box-shadow: var(--shadow);
+  transition: all .25s ease;
+  display:flex; align-items:flex-start; justify-content:space-between;
+  position:relative; overflow:hidden;
+}
+.kpi:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); }
+.kpi:before{ content:""; position:absolute; right:-28px; top:-28px; width:120px; height:120px; border-radius:999px; background: rgba(59,130,246,.10); opacity:0; transition: opacity .25s ease; }
+.kpi:hover:before{ opacity:1; }
+.kpi h4{ margin:0; color: var(--muted); font-size:12px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+.kpi .num{ margin-top:10px; font-size:28px; font-weight:950; color: var(--text); letter-spacing:-.02em; }
+.kpi .sub{ margin-top:6px; color: var(--muted); font-size:12.5px; font-weight:650; }
+.kpi .dot{ width:44px; height:44px; border-radius: 14px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:900; }
+.kpi.neutral .dot{ background: var(--grad-hero); box-shadow: 0 0 40px rgba(59,130,246,.22); }
+.kpi.success .dot{ background: var(--grad-success); box-shadow: 0 0 40px rgba(16,185,129,.22); }
+.kpi.warn .dot{ background: var(--grad-warning); box-shadow: 0 0 40px rgba(245,158,11,.20); }
+.kpi.danger .dot{ background: var(--grad-danger); box-shadow: 0 0 40px rgba(239,68,68,.20); }
+
+/* Radio tabs spacing */
+div[role="radiogroup"]{ gap: 16px; }
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# -----------------------------
+# Utils
+# -----------------------------
+def norm_txt(s):
+    if s is None:
+        return ""
+    s = str(s).lower().strip()
+    repl = str.maketrans("áàâãäéèêëíìîïóòôõöúùûüçñ", "aaaaaeeeeiiiiooooouuuucn")
+    s = s.translate(repl)
+    for ch in ["\n", "\t", " ", ".", ",", ";", ":", "-", "_", "/", "\\", "(", ")", "[", "]", "{", "}", "%", "º"]:
+        s = s.replace(ch, " ")
+    return " ".join(s.split())
+
+def to_float(x):
+    """Converte valores numéricos preservando casas decimais.
+
+    - XML (NF-e/NFC-e) normalmente vem com decimal em ponto: 43.00
+    - Excel/BR pode vir como: 1.234,56 ou 43,00
+    - Não remove '.' cegamente (isso quebrava o XML e virava 4300).
+    """
+    if pd.isna(x):
+        return np.nan
+    if isinstance(x, (int, float, np.number)):
+        return float(x)
+
+    s = str(x).strip()
+    if not s:
+        return np.nan
+
+    # remove símbolos comuns
+    s = s.replace("R$", "").replace("\u00a0", " ").strip()
+    s = s.replace(" ", "")
+
+    if "," in s and "." in s:
+        # assume formato BR "1.234,56"
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s and "." not in s:
+        # "123,45"
+        s = s.replace(",", ".")
+
+        # "43.00" (XML) ou "4300"
+        pass
+
+    try:
+        return float(s)
+    except:
+        return np.nan
+
+
+def to_date(x):
+    if pd.isna(x):
+        return pd.NaT
+    if isinstance(x, (datetime, pd.Timestamp)):
+        return pd.to_datetime(x).date()
+    s = str(x).strip()
+    if not s:
+        return pd.NaT
+    try:
+        return dtparser.parse(s, dayfirst=True).date()
+    except:
+        return pd.NaT
+
+def round2(x):
+    if pd.isna(x):
+        return np.nan
+    return float(np.round(x, 2))
+
+def detect_centavos(df, cols):
+    """
+    Heurística para ADM/FLEX:
+    Se a mediana é "grande" e quase tudo é inteiro, assume que está em centavos.
+    """
+    for c in cols:
+        if c in df.columns:
+            s = df[c].dropna()
+            if not s.empty:
+                try:
+                    arr = s.astype(float)
+                    med = float(np.nanmedian(arr))
+                    if med > 1000 and ((arr % 1) == 0).mean() > 0.9:
+                        df[c] = df[c] / 100
+                except:
+                    pass
+    return df
+
+def excel_download(df_dict):
+    """Gera Excel 'premium' (dashboard + tabela estilizada + filtros + congela painéis)."""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter", datetime_format="yyyy-mm-dd") as writer:
+        workbook = writer.book
+
+        # =========================
+        # Formatos
+        # =========================
+        fmt_title = workbook.add_format({
+            "bold": True, "font_size": 16, "font_color": "#1F4E79"
+        })
+        fmt_sub = workbook.add_format({
+            "bold": True, "font_size": 11, "font_color": "#1F4E79"
+        })
+        fmt_kpi = workbook.add_format({
+            "bold": True, "font_size": 14, "align": "center", "valign": "vcenter",
+            "bg_color": "#E8F1FB", "border": 1
+        })
+        fmt_kpi_lbl = workbook.add_format({
+            "bold": True, "align": "center", "valign": "vcenter",
+            "bg_color": "#F3F6FB", "border": 1
+        })
+
+        fmt_header = workbook.add_format({
+            "bold": True, "font_color": "white", "bg_color": "#1F4E79",
+            "align": "center", "valign": "vcenter", "border": 1
+        })
+        fmt_text = workbook.add_format({"valign": "vcenter"})
+        fmt_wrap = workbook.add_format({"valign": "vcenter", "text_wrap": True})
+        fmt_num = workbook.add_format({"num_format": "#,##0.00", "valign": "vcenter"})
+        fmt_int = workbook.add_format({"num_format": "0", "valign": "vcenter"})
+        fmt_date = workbook.add_format({"num_format": "yyyy-mm-dd", "valign": "vcenter"})
+
+        fmt_ok = workbook.add_format({"font_color": "#006100", "bg_color": "#C6EFCE"})
+        fmt_warn = workbook.add_format({"font_color": "#9C5700", "bg_color": "#FFEB9C"})
+        fmt_bad = workbook.add_format({"font_color": "#9C0006", "bg_color": "#FFC7CE"})
+        fmt_div = workbook.add_format({"font_color": "#7F3F00", "bg_color": "#FCE4D6"})
+
+        zebra = workbook.add_format({"bg_color": "#F7F7F7"})
+
+        # =========================
+        # Dashboard (Resumo)
+        # =========================
+        resumo_name = "RESUMO"
+        ws = workbook.add_worksheet(resumo_name)
+        writer.sheets[resumo_name] = ws
+
+        ws.set_default_row(18)
+        ws.set_column(0, 0, 3)
+        ws.set_column(1, 1, 40)
+        ws.set_column(2, 6, 18)
+
+        ws.write(0, 1, "Auditoria NFC-e — Resumo", fmt_title)
+        ws.write(2, 1, "KPIs", fmt_sub)
+
+        def safe_len(df):
+            try:
+                return int(len(df))
+            except:
+                return 0
+
+        sefaz_n = safe_len(df_dict.get("SEFAZ", pd.DataFrame()))
+        adm_n = safe_len(df_dict.get("ADM", pd.DataFrame()))
+        flex_n = safe_len(df_dict.get("FLEX", pd.DataFrame()))
+        alerts_df = df_dict.get("ALERTAS", pd.DataFrame())
+        alerts_n = safe_len(alerts_df)
+
+        # KPI cards
+        kpis = [("Notas SEFAZ", sefaz_n), ("Notas ADM", adm_n), ("Notas FLEX", flex_n), ("Alertas", alerts_n)]
+        row = 4
+        col = 1
+        for i, (lbl, val) in enumerate(kpis):
+            ws.write(row, col + i, lbl, fmt_kpi_lbl)
+            ws.write(row + 1, col + i, val, fmt_kpi)
+
+        # Quebras por motivo / status
+        ws.write(7, 1, "Distribuição de Alertas", fmt_sub)
+        ws.set_column(1, 1, 45)
+        ws.set_column(2, 2, 14)
+
+        start_row = 9
+        if alerts_df is not None and not alerts_df.empty:
+            # Motivos
+            motivos = alerts_df["motivo"].fillna("SEM_MOTIVO").value_counts().head(20)
+            ws.write(start_row, 1, "Motivo (Top 20)", fmt_header)
+            ws.write(start_row, 2, "Qtde", fmt_header)
+            for r, (k, v) in enumerate(motivos.items(), start=1):
+                ws.write(start_row + r, 1, str(k), fmt_wrap)
+                ws.write(start_row + r, 2, int(v), fmt_int)
+            # Status
+            st_row = start_row
+            st_col = 4
+            ws.set_column(st_col, st_col, 22)
+            ws.set_column(st_col + 1, st_col + 1, 12)
+            ws.write(st_row, st_col, "Status ADM", fmt_header)
+            ws.write(st_row, st_col + 1, "Qtde", fmt_header)
+            for r, (k, v) in enumerate(alerts_df["status_adm"].fillna("SEM").value_counts().items(), start=1):
+                ws.write(st_row + r, st_col, str(k), fmt_text)
+                ws.write(st_row + r, st_col + 1, int(v), fmt_int)
+
+            ws.write(st_row + 6, st_col, "Status FLEX", fmt_header)
+            ws.write(st_row + 6, st_col + 1, "Qtde", fmt_header)
+            for r, (k, v) in enumerate(alerts_df["status_flex"].fillna("SEM").value_counts().items(), start=1):
+                ws.write(st_row + 6 + r, st_col, str(k), fmt_text)
+                ws.write(st_row + 6 + r, st_col + 1, int(v), fmt_int)
+
+            ws.write(start_row, 1, "Sem alertas gerados.", fmt_text)
+
+        # =========================
+        # Abas de dados (Tabela bonita)
+        # =========================
+        def apply_table(sheet, df):
+            ws = writer.sheets[sheet]
+            try:
+                nrows, ncols = df.shape
+            except Exception:
+                nrows, ncols = 0, 0
+
+            # Evita ws.add_table() (causa OverlappingRange quando o df já foi escrito)
+            # Congela cabeçalho
+            try:
+                ws.freeze_panes(1, 0)
+            except Exception:
+                pass
+
+            # Autofiltro
+            if nrows > 0 and ncols > 0:
+                try:
+                    ws.autofilter(0, 0, nrows, ncols - 1)
+                except Exception:
+                    pass
+
+            # Ajuste de colunas (amostra para performance)
+            if ncols > 0:
+                try:
+                    for i, col in enumerate(df.columns):
+                        max_len = max(len(str(col)), 8)
+                        sample = df.iloc[: min(200, nrows), i].astype(str)
+                        if len(sample) > 0:
+                            max_len = max(max_len, int(sample.map(len).max()))
+                        ws.set_column(i, i, min(max_len + 2, 45))
+                except Exception:
+                    pass
+
+
+            apply_table(sheet, df)
+
+        # Cores das abas
+        for sheet, color in [("SEFAZ", "#D9E1F2"), ("ADM", "#E2EFDA"), ("FLEX", "#FFF2CC"), ("ALERTAS", "#FCE4D6")]:
+            if sheet in writer.sheets:
+                writer.sheets[sheet].set_tab_color(color)
+
+    return output.getvalue()
+
+
+def find_col(df, ideas):
+    cols_norm = {c: norm_txt(c) for c in df.columns}
+    for want in ideas:
+        w = norm_txt(want)
+        for c, cn in cols_norm.items():
+            if w and w in cn:
+                return c
+    return None
+
+def safe_get_col(df, ideas, required=True, default=np.nan):
+    col = find_col(df, ideas)
+    if col is None:
+        if required:
+            raise KeyError(
+                f"Não encontrei coluna parecida com {ideas}. "
+                f"Colunas disponíveis: {list(df.columns)}"
+            )
+
+            return pd.Series([default] * len(df), index=df.index)
+    return df[col]
+
+def normalize_key(x):
+    """
+    Normaliza série/número para bater entre Excel e XML:
+    - remove .0 (quando vem como float)
+    - mantém só dígitos
+    - remove zeros à esquerda (000123 -> 123)
+    """
+    if pd.isna(x):
+        return ""
+    s = str(x).strip()
+
+    if re.fullmatch(r"\d+\.0+", s):
+        s = s.split(".")[0]
+
+    try:
+        if isinstance(x, (float, np.floating)) and float(x).is_integer():
+            s = str(int(x))
+    except:
+        pass
+
+    dig = re.sub(r"\D+", "", s)
+    if dig == "":
+        return s
+
+    dig2 = dig.lstrip("0")
+    return dig2 if dig2 != "" else "0"
+
+def looks_like_bad_header(cols):
+    cols = list(cols)
+    if len(cols) == 0:
+        return True
+    if sum(str(c).lower().startswith("unnamed") for c in cols) >= max(1, int(len(cols) * 0.6)):
+        return True
+    if len(cols) >= 3 and all(str(c).strip() == "" for c in cols):
+        return True
+    if len(cols) == 1 and len(str(cols[0])) > 25:
+        return True
+    if sum(isinstance(c, (int, float, datetime, pd.Timestamp, np.number)) for c in cols) >= max(1, int(len(cols) * 0.6)):
+        return True
+    return False
+
+def smart_read_excel(uploaded_file):
+    df1 = pd.read_excel(uploaded_file, sheet_name=0)
+    if not looks_like_bad_header(df1.columns):
+        return df1
+
+    df0 = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+
+    expected = [
+        "data", "data venda", "data movto", "emissao", "dt emissao", "data emissao",
+        "serie", "série", "numero", "número", "vlr", "vlr total", "vlr. total",
+        "valor", "total", "base", "base icms", "icms", "cfop", "aliquota", "alíquota"
+    ]
+    expected = [norm_txt(x) for x in expected]
+
+    best_i = None
+    best_score = -1
+    max_rows = min(60, len(df0))
+
+    for i in range(max_rows):
+        row = df0.iloc[i].tolist()
+        row_norm = [norm_txt(x) for x in row]
+        score = 0
+        for cell in row_norm:
+            for e in expected:
+                if e and e in cell:
+                    score += 1
+        has_data = any("data" in c for c in row_norm)
+        has_key = any(("serie" in c) or ("numero" in c) or ("nnf" in c) or ("n nf" in c) for c in row_norm)
+        if has_data and has_key:
+            score += 3
+        if score > best_score:
+            best_score = score
+            best_i = i
+
+    if best_i is None or best_score < 2:
+        df0.columns = [f"col_{i}" for i in range(df0.shape[1])]
+        return df0
+
+    header = df0.iloc[best_i].tolist()
+    header = [str(h).strip() if not pd.isna(h) else "" for h in header]
+    header = [h if h else f"col_{idx}" for idx, h in enumerate(header)]
+
+    df = df0.iloc[best_i + 1:].copy()
+    df.columns = header
+    df = df.reset_index(drop=True)
+    df = df.dropna(how="all")
+    return df
+
+# -----------------------------
+# XML SEFAZ
+# -----------------------------
+def parse_xml(xml_bytes: bytes, filename: str | None = None):
+    root = etree.fromstring(xml_bytes)
+
+    def xtext(node, xpath):
+        el = node.xpath(xpath)
+        if not el:
+            return None
+        return el[0].text if hasattr(el[0], "text") else str(el[0])
+
+    infNFe = root.xpath("//*[local-name()='infNFe']")
+    if not infNFe:
+        return None
+    infNFe = infNFe[0]
+
+    ide_nodes = infNFe.xpath(".//*[local-name()='ide']")
+    if not ide_nodes:
+        return None
+    ide = ide_nodes[0]
+
+    serie = xtext(ide, ".//*[local-name()='serie']")
+    numero = xtext(ide, ".//*[local-name()='nNF']")
+    dhEmi = xtext(ide, ".//*[local-name()='dhEmi']") or xtext(ide, ".//*[local-name()='dEmi']")
+    data = to_date(dhEmi)
+
+    total = infNFe.xpath(".//*[local-name()='ICMSTot']")
+    vNF = vBC = vICMS = None
+    if total:
+        total = total[0]
+        vNF = to_float(xtext(total, ".//*[local-name()='vNF']"))
+        vBC = to_float(xtext(total, ".//*[local-name()='vBC']"))
+        vICMS = to_float(xtext(total, ".//*[local-name()='vICMS']"))
+
+    # SEFAZ (XML) já vem em reais -> NÃO divide por 100 aqui
+
+    # Regra: arquivos XML cujo nome começa com '11' são NFC-e canceladas (padrão informado)
+    cancelada = False
+    if filename:
+        base_name = os.path.basename(str(filename))
+        cancelada = base_name.startswith('11')
+
+    return {
+        "data": data,
+        "serie": normalize_key(serie),
+        "numero": normalize_key(numero),
+        "valor": round2(vNF),
+        "base": round2(vBC),
+        "icms": round2(vICMS),
+        "fonte": "SEFAZ",
+        "cancelada": cancelada,
+    }
+
+def load_sefaz_from_upload(uploaded):
+    rows = []
+
+    def add_xml_bytes(b, fname=None):
+        r = parse_xml(b, filename=fname)
+        if r:
+            rows.append(r)
+
+    for f in uploaded:
+        name = (f.name or "").lower()
+        content = f.getvalue()
+
+        if name.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(BytesIO(content), "r") as z:
+                    for n in z.namelist():
+                        if n.lower().endswith(".xml"):
+                            add_xml_bytes(z.read(n), fname=n)
+            except:
+                pass
+        elif name.endswith(".xml"):
+            add_xml_bytes(content, fname=f.name)
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    df["serie"] = df["serie"].astype(str).map(normalize_key)
+    df["numero"] = df["numero"].astype(str).map(normalize_key)
+    return df
+
+# -----------------------------
+# Standardizers
+# -----------------------------
+def standardize_adm(df):
+    out = pd.DataFrame()
+
+    out["data"] = safe_get_col(df, ["data venda", "data movto", "data"], required=True).apply(to_date)
+
+    serie_col = find_col(df, ["serie", "série"])
+    if serie_col:
+        out["serie"] = df[serie_col].map(normalize_key)
+
+        out["serie"] = "1"
+
+    out["numero"] = safe_get_col(df, ["numero", "número", "nnf", "n nf"], required=True).map(normalize_key)
+
+    out["valor"] = safe_get_col(df, ["vlr total", "vlr. total", "valor", "total", "vlt total"], required=True).apply(to_float)
+
+    # opcionais (ADM normalmente não tem)
+    out["base"] = safe_get_col(df, ["base", "vbc", "base icms"], required=False, default=np.nan).apply(to_float)
+    out["icms"] = safe_get_col(df, ["icms", "vicms"], required=False, default=np.nan).apply(to_float)
+    # Fiscal ADM vem em centavos -> converte para reais
+    for c in ["valor", "base", "icms"]:
+        out[c] = out[c] / 100
+    for c in ["valor", "base", "icms"]:
+        out[c] = out[c].apply(round2)
+
+    out["fonte"] = "ADM"
+    return out
+
+def standardize_flex(df):
+    out = pd.DataFrame()
+
+    out["data"] = safe_get_col(df, ["data", "emissao", "dt emissao", "data emissao"], required=True).apply(to_date)
+
+    serie_col = find_col(df, ["serie", "série"])
+    if serie_col:
+        out["serie"] = df[serie_col].map(normalize_key)
+
+        out["serie"] = "1"
+
+    out["numero"] = safe_get_col(df, ["numero", "número", "nfce", "nota", "nnf", "n nf"], required=True).map(normalize_key)
+
+    out["valor"] = safe_get_col(df, ["valor", "total", "liquido", "líquido"], required=True).apply(to_float)
+    out["base"]  = safe_get_col(df, ["base icms", "base", "vbc"], required=False, default=np.nan).apply(to_float)
+    out["icms"]  = safe_get_col(df, ["icms", "vicms"], required=False, default=np.nan).apply(to_float)
+
+    # FLEX pode vir em centavos
+    out = detect_centavos(out, ["valor", "base", "icms"])
+    for c in ["valor", "base", "icms"]:
+        out[c] = out[c].apply(round2)
+
+    grp = out.groupby(["data", "serie", "numero"], as_index=False)[["valor", "base", "icms"]].sum()
+    grp["fonte"] = "FLEX"
+    return grp
+
+# -----------------------------
+# Auditoria
+# -----------------------------
+def audit(sefaz, adm, flex):
+    '''
+    Auditoria focada em VALORES (ignora DATA como chave principal).
+
+    Match principal: Série + Número
+    - Se existir em ADM/FLEX com a mesma Série+Número, considera a nota "existente"
+    - Se houver múltiplas linhas com a mesma Série+Número (datas diferentes), escolhe a melhor
+      comparando os valores com SEFAZ (menor diferença), e marca status MULTIPLO.
+
+    Alertas:
+    - NAO_ENCONTRADO (não existe por Série+Número)
+    - Divergência de VALOR / BASE / ICMS (quando existe)
+    '''
+    if sefaz.empty:
+        return pd.DataFrame(columns=[
+            "data","serie","numero",
+            "status_adm","status_flex","motivo",
+            "valor_sefaz","base_sefaz","icms_sefaz",
+            "data_adm","serie_adm","valor_adm","base_adm","icms_adm",
+            "data_flex","serie_flex","valor_flex","base_flex","icms_flex",
+        ])
+
+    k_key = ["serie", "numero"]
+
+    # agrupa por Série+Número
+    def build_group(df):
+        if df.empty:
+            return {}
+        return { k: sub for k, sub in df.groupby(k_key) }
+
+    adm_g  = build_group(adm)
+    flex_g = build_group(flex)
+
+    alerts = []
+
+    def cmp(a, b):
+        if pd.isna(a) and pd.isna(b):
+            return True
+        return np.isclose(a, b, atol=0.01, equal_nan=True)
+
+    def pick_best(sub, r_sefaz):
+        """Escolhe a linha mais provável quando há duplicidade (datas diferentes)."""
+        if sub is None or len(sub) == 0:
+            return None, "NAO_ENCONTRADO"
+        if len(sub) == 1:
+            return sub.iloc[0], "OK"
+
+        # Score por proximidade dos valores (prioriza VALOR)
+        def score(row):
+            s = 0.0
+            # valor sempre pesa mais
+            if pd.notna(r_sefaz.get("valor", np.nan)) and pd.notna(row.get("valor", np.nan)):
+                s += abs(float(r_sefaz["valor"]) - float(row["valor"])) * 100
+            # base/icms se existirem
+            if pd.notna(r_sefaz.get("base", np.nan)) and pd.notna(row.get("base", np.nan)):
+                s += abs(float(r_sefaz["base"]) - float(row["base"]))
+            if pd.notna(r_sefaz.get("icms", np.nan)) and pd.notna(row.get("icms", np.nan)):
+                s += abs(float(r_sefaz["icms"]) - float(row["icms"]))
+            # bônus se data bate (não é chave, mas ajuda a escolher)
+            if str(row.get("data", "")) == str(r_sefaz.get("data", "")):
+                s -= 0.5
+            return s
+
+        best_idx = sub.apply(score, axis=1).astype(float).idxmin()
+        return sub.loc[best_idx], "MULTIPLO"
+
+    def add_alert(r_sefaz, status_adm, status_flex, motivo, r_adm=None, r_flex=None):
+        alerts.append({
+            "data": r_sefaz.get("data", np.nan),
+            "serie": r_sefaz.get("serie", np.nan),
+            "numero": r_sefaz.get("numero", np.nan),
+
+            "status_adm": status_adm,
+            "status_flex": status_flex,
+            "motivo": motivo,
+
+            "valor_sefaz": r_sefaz.get("valor", np.nan),
+            "base_sefaz": r_sefaz.get("base", np.nan),
+            "icms_sefaz": r_sefaz.get("icms", np.nan),
+
+            "data_adm":  (r_adm.get("data", np.nan)  if r_adm is not None else np.nan),
+            "serie_adm": (r_adm.get("serie", np.nan) if r_adm is not None else np.nan),
+            "valor_adm": (r_adm.get("valor", np.nan) if r_adm is not None else np.nan),
+            "base_adm":  (r_adm.get("base", np.nan)  if r_adm is not None else np.nan),
+            "icms_adm":  (r_adm.get("icms", np.nan)  if r_adm is not None else np.nan),
+
+            "data_flex":  (r_flex.get("data", np.nan)  if r_flex is not None else np.nan),
+            "serie_flex": (r_flex.get("serie", np.nan) if r_flex is not None else np.nan),
+            "valor_flex": (r_flex.get("valor", np.nan) if r_flex is not None else np.nan),
+            "base_flex":  (r_flex.get("base", np.nan)  if r_flex is not None else np.nan),
+            "icms_flex":  (r_flex.get("icms", np.nan)  if r_flex is not None else np.nan),
+        })
+
+    for _, r in sefaz.iterrows():
+        key = (r["serie"], r["numero"])
+
+        adm_sub  = adm_g.get(key)
+        flex_sub = flex_g.get(key)
+
+        r_adm, st_adm = pick_best(adm_sub, r)
+        r_flex, st_flex = pick_best(flex_sub, r)
+
+        # Existência
+        status_adm = "SEM_ARQUIVO" if adm.empty else st_adm
+        status_flex = "SEM_ARQUIVO" if flex.empty else st_flex
+
+        if status_adm in ["SEM_ARQUIVO", "NAO_ENCONTRADO"] or status_flex in ["SEM_ARQUIVO", "NAO_ENCONTRADO"]:
+            motivos = []
+            if status_adm == "SEM_ARQUIVO":
+                motivos.append("ADM não carregou")
+            elif status_adm == "NAO_ENCONTRADO":
+                motivos.append("Nota NÃO encontrada no ADM (Série+Número)")
+            elif status_adm == "MULTIPLO":
+                motivos.append("ADM: múltiplas linhas (datas diferentes)")
+
+            if status_flex == "SEM_ARQUIVO":
+                motivos.append("FLEX não carregou")
+            elif status_flex == "NAO_ENCONTRADO":
+                motivos.append("Nota NÃO encontrada no FLEX (Série+Número)")
+            elif status_flex == "MULTIPLO":
+                motivos.append("FLEX: múltiplas linhas (datas diferentes)")
+
+            add_alert(r, status_adm, status_flex, " | ".join(motivos), r_adm=r_adm, r_flex=r_flex)
+            continue
+
+        # Agora: existe. Se MULTIPLO, avisa mas continua comparando valores
+        if status_adm == "MULTIPLO" or status_flex == "MULTIPLO":
+            motivos = []
+            if status_adm == "MULTIPLO":
+                motivos.append("ADM: múltiplas linhas (escolhida a mais próxima por valores)")
+            if status_flex == "MULTIPLO":
+                motivos.append("FLEX: múltiplas linhas (escolhida a mais próxima por valores)")
+            add_alert(r, status_adm, status_flex, " | ".join(motivos), r_adm=r_adm, r_flex=r_flex)
+
+        # Divergência VALOR
+        if r_adm is not None and not cmp(r.get("valor", np.nan), r_adm.get("valor", np.nan)):
+            add_alert(r, status_adm, status_flex, "Divergência de VALOR (ADM)", r_adm=r_adm, r_flex=r_flex)
+
+        if r_flex is not None and not cmp(r.get("valor", np.nan), r_flex.get("valor", np.nan)):
+            add_alert(r, status_adm, status_flex, "Divergência de VALOR (FLEX)", r_adm=r_adm, r_flex=r_flex)
+
+        # Divergência BASE/ICMS (só se existir dos dois lados)
+        if r_adm is not None and pd.notna(r_adm.get("base", np.nan)) and pd.notna(r.get("base", np.nan)):
+            if not cmp(r["base"], r_adm["base"]):
+                add_alert(r, status_adm, status_flex, "Divergência de BASE (ADM)", r_adm=r_adm, r_flex=r_flex)
+
+        if r_adm is not None and pd.notna(r_adm.get("icms", np.nan)) and pd.notna(r.get("icms", np.nan)):
+            if not cmp(r["icms"], r_adm["icms"]):
+                add_alert(r, status_adm, status_flex, "Divergência de ICMS (ADM)", r_adm=r_adm, r_flex=r_flex)
+
+        if r_flex is not None and pd.notna(r_flex.get("base", np.nan)) and pd.notna(r.get("base", np.nan)):
+            if not cmp(r["base"], r_flex["base"]):
+                add_alert(r, status_adm, status_flex, "Divergência de BASE (FLEX)", r_adm=r_adm, r_flex=r_flex)
+
+        if r_flex is not None and pd.notna(r_flex.get("icms", np.nan)) and pd.notna(r.get("icms", np.nan)):
+            if not cmp(r["icms"], r_flex["icms"]):
+                add_alert(r, status_adm, status_flex, "Divergência de ICMS (FLEX)", r_adm=r_adm, r_flex=r_flex)
+
+    df_alerts = pd.DataFrame(alerts)
+    if not df_alerts.empty:
+        df_alerts = df_alerts.drop_duplicates().sort_values(["serie","numero","motivo"])
+    return df_alerts
+
+
+
+def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> pd.DataFrame:
+    """Gera uma tabela 'completa' (todas as notas do SEFAZ) com status ADM/FLEX e motivo.
+
+    - Base: universo SEFAZ
+    - Merge ADM/FLEX por (serie, numero)
+    - Motivo padrão: 'Conferido'
+    - Se a nota aparecer em alerts_df, o motivo vira a concatenação dos motivos (por nota)
+    """
+    sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
+    if sef is None or sef.empty:
+        return pd.DataFrame()
+
+    # garante colunas básicas
+    for c in ["data","serie","numero","valor","base","icms"]:
+        if c not in sef.columns:
+            sef[c] = np.nan
+
+    # renomeia colunas SEFAZ para não conflitar
+    out = sef.rename(columns={
+        "valor": "valor_sefaz",
+        "base": "base_sefaz",
+        "icms": "icms_sefaz",
+        "data": "data_sefaz",
+    }).copy()
+
+    # ADM
+    adm = adm_df.copy() if isinstance(adm_df, pd.DataFrame) else pd.DataFrame()
+    if adm is not None and not adm.empty and {"serie","numero"}.issubset(adm.columns):
+        adm2 = adm.rename(columns={
+            "valor": "valor_adm",
+            "base": "base_adm",
+            "icms": "icms_adm",
+            "data": "data_adm",
+        })
+        # garante tipos iguais para merge
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        adm2[["serie","numero"]] = adm2[["serie","numero"]].astype(str)
+        out = out.merge(
+            adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]],
+            on=["serie","numero"],
+            how="left",
+        )
+    else:
+        out["data_adm"] = np.nan
+        out["valor_adm"] = np.nan
+        out["base_adm"] = np.nan
+        out["icms_adm"] = np.nan
+
+    # FLEX
+    flex = flex_df.copy() if isinstance(flex_df, pd.DataFrame) else pd.DataFrame()
+    if flex is not None and not flex.empty and {"serie","numero"}.issubset(flex.columns):
+        flex2 = flex.rename(columns={
+            "valor": "valor_flex",
+            "base": "base_flex",
+            "icms": "icms_flex",
+            "data": "data_flex",
+        })
+        # garante tipos iguais para merge
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        flex2[["serie","numero"]] = flex2[["serie","numero"]].astype(str)
+        out = out.merge(
+            flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]],
+            on=["serie","numero"],
+            how="left",
+        )
+    else:
+        out["data_flex"] = np.nan
+        out["valor_flex"] = np.nan
+        out["base_flex"] = np.nan
+        out["icms_flex"] = np.nan
+    # status: OK se achou linha, NAO_ENCONTRADO caso contrário
+    out["status_adm"] = np.where(out["valor_adm"].notna(), "OK", "NAO_ENCONTRADO")
+    out["status_flex"] = np.where(out["valor_flex"].notna(), "OK", "NAO_ENCONTRADO")
+
+    # motivo padrão
+    out["motivo"] = "Conferido"
+
+    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
+    if al is not None and not al.empty and {"serie","numero","motivo"}.issubset(al.columns):
+        g = (al[["serie","numero","motivo","status_adm","status_flex"]]
+             .copy())
+        # agrega motivos por nota
+        motivos = (g.groupby(["serie","numero"])["motivo"]
+                   .apply(lambda s: " | ".join(pd.unique(s.astype(str))))
+                   .reset_index(name="motivo_alerta"))
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        motivos[["serie","numero"]] = motivos[["serie","numero"]].astype(str)
+        out = out.merge(motivos, on=["serie","numero"], how="left")
+        out["motivo"] = np.where(out["motivo_alerta"].notna(), out["motivo_alerta"], out["motivo"])
+        out = out.drop(columns=["motivo_alerta"])
+
+        # se alertas trouxerem status mais específicos, usa-os
+        if "status_adm" in g.columns:
+            st_adm = (g.groupby(["serie","numero"])["status_adm"]
+                      .apply(lambda s: pd.unique(s.astype(str))[-1])
+                      .reset_index(name="_status_adm"))
+            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+            st_adm[["serie","numero"]] = st_adm[["serie","numero"]].astype(str)
+            out = out.merge(st_adm, on=["serie","numero"], how="left")
+            out["status_adm"] = np.where(out["_status_adm"].notna(), out["_status_adm"], out["status_adm"])
+            out = out.drop(columns=["_status_adm"])
+        if "status_flex" in g.columns:
+            st_fx = (g.groupby(["serie","numero"])["status_flex"]
+                     .apply(lambda s: pd.unique(s.astype(str))[-1])
+                     .reset_index(name="_status_flex"))
+            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+            st_fx[["serie","numero"]] = st_fx[["serie","numero"]].astype(str)
+            out = out.merge(st_fx, on=["serie","numero"], how="left")
+            out["status_flex"] = np.where(out["_status_flex"].notna(), out["_status_flex"], out["status_flex"])
+            out = out.drop(columns=["_status_flex"])
+
+    return out
+
+# -----------------------------
+# UI
+
+
+
+
+def normalize_keys(df):
+    for col in ["serie", "numero"]:
+        if col in df.columns:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(".0", "", regex=False)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+    return df
+
 def normalize_table(df: pd.DataFrame, fonte: str, dividir_por_100: bool=False) -> pd.DataFrame:
     """Normaliza qualquer tabela (CSV/Excel) para o formato padrão:
     data, serie, numero, valor, base, icms, fonte
@@ -273,6 +1310,9 @@ def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataF
 
 def style_table(df):
     if df is None or df.empty:
+    # garante chaves para merge (ADM/FLEX podem vir com header diferente)
+    df = _ensure_serie_numero(df)
+
         return df
     d = df.copy()
 
