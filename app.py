@@ -890,6 +890,102 @@ def audit(sefaz, adm, flex):
         df_alerts = df_alerts.drop_duplicates().sort_values(["serie","numero","motivo"])
     return df_alerts
 
+
+
+def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> pd.DataFrame:
+    """Gera uma tabela 'completa' (todas as notas do SEFAZ) com status ADM/FLEX e motivo.
+
+    - Base: universo SEFAZ
+    - Merge ADM/FLEX por (serie, numero)
+    - Motivo padrão: 'Conferido'
+    - Se a nota aparecer em alerts_df, o motivo vira a concatenação dos motivos (por nota)
+    """
+    sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
+    if sef is None or sef.empty:
+        return pd.DataFrame()
+
+    # garante colunas básicas
+    for c in ["data","serie","numero","valor","base","icms"]:
+        if c not in sef.columns:
+            sef[c] = np.nan
+
+    # renomeia colunas SEFAZ para não conflitar
+    out = sef.rename(columns={
+        "valor": "valor_sefaz",
+        "base": "base_sefaz",
+        "icms": "icms_sefaz",
+        "data": "data_sefaz",
+    }).copy()
+
+    # ADM
+    adm = adm_df.copy() if isinstance(adm_df, pd.DataFrame) else pd.DataFrame()
+    if adm is not None and not adm.empty and {"serie","numero"}.issubset(adm.columns):
+        adm2 = adm.rename(columns={
+            "valor": "valor_adm",
+            "base": "base_adm",
+            "icms": "icms_adm",
+            "data": "data_adm",
+        })
+        out = out.merge(adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]], on=["serie","numero"], how="left")
+    else:
+        out["data_adm"] = np.nan
+        out["valor_adm"] = np.nan
+        out["base_adm"] = np.nan
+        out["icms_adm"] = np.nan
+
+    # FLEX
+    flex = flex_df.copy() if isinstance(flex_df, pd.DataFrame) else pd.DataFrame()
+    if flex is not None and not flex.empty and {"serie","numero"}.issubset(flex.columns):
+        flex2 = flex.rename(columns={
+            "valor": "valor_flex",
+            "base": "base_flex",
+            "icms": "icms_flex",
+            "data": "data_flex",
+        })
+        out = out.merge(flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]], on=["serie","numero"], how="left")
+    else:
+        out["data_flex"] = np.nan
+        out["valor_flex"] = np.nan
+        out["base_flex"] = np.nan
+        out["icms_flex"] = np.nan
+
+    # status: OK se achou linha, NAO_ENCONTRADO caso contrário
+    out["status_adm"] = np.where(out["valor_adm"].notna(), "OK", "NAO_ENCONTRADO")
+    out["status_flex"] = np.where(out["valor_flex"].notna(), "OK", "NAO_ENCONTRADO")
+
+    # motivo padrão
+    out["motivo"] = "Conferido"
+
+    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
+    if al is not None and not al.empty and {"serie","numero","motivo"}.issubset(al.columns):
+        g = (al[["serie","numero","motivo","status_adm","status_flex"]]
+             .copy())
+        # agrega motivos por nota
+        motivos = (g.groupby(["serie","numero"])["motivo"]
+                   .apply(lambda s: " | ".join(pd.unique(s.astype(str))))
+                   .reset_index(name="motivo_alerta"))
+        out = out.merge(motivos, on=["serie","numero"], how="left")
+        out["motivo"] = np.where(out["motivo_alerta"].notna(), out["motivo_alerta"], out["motivo"])
+        out = out.drop(columns=["motivo_alerta"])
+
+        # se alertas trouxerem status mais específicos, usa-os
+        if "status_adm" in g.columns:
+            st_adm = (g.groupby(["serie","numero"])["status_adm"]
+                      .apply(lambda s: pd.unique(s.astype(str))[-1])
+                      .reset_index(name="_status_adm"))
+            out = out.merge(st_adm, on=["serie","numero"], how="left")
+            out["status_adm"] = np.where(out["_status_adm"].notna(), out["_status_adm"], out["status_adm"])
+            out = out.drop(columns=["_status_adm"])
+        if "status_flex" in g.columns:
+            st_fx = (g.groupby(["serie","numero"])["status_flex"]
+                     .apply(lambda s: pd.unique(s.astype(str))[-1])
+                     .reset_index(name="_status_flex"))
+            out = out.merge(st_fx, on=["serie","numero"], how="left")
+            out["status_flex"] = np.where(out["_status_flex"].notna(), out["_status_flex"], out["status_flex"])
+            out = out.drop(columns=["_status_flex"])
+
+    return out
+
 # -----------------------------
 # UI
 
@@ -898,23 +994,65 @@ def audit(sefaz, adm, flex):
 def normalize_table(df: pd.DataFrame, fonte: str, dividir_por_100: bool=False) -> pd.DataFrame:
     """Normaliza qualquer tabela (CSV/Excel) para o formato padrão:
     data, serie, numero, valor, base, icms, fonte
+
+    Robusto para planilhas com cabeçalhos variados: tenta match exato (normalizado)
+    e, se não encontrar, usa heurísticas por substring (ex.: 'serie', 'num', 'valor', 'icms').
     """
-    if df is None or len(df)==0:
+    if df is None or len(df) == 0:
         return pd.DataFrame(columns=["data","serie","numero","valor","base","icms","fonte"])
+
+    # mapa: nome_normalizado -> nome_original
     cols = {norm_txt(c): c for c in df.columns}
 
     def pick(primary, fallbacks):
-        for k in [primary]+fallbacks:
+        for k in [primary] + list(fallbacks):
             if k in cols:
                 return cols[k]
         return None
 
-    c_data = pick("data", ["dt", "data venda", "data movto", "data_movto", "dtemi", "dhEmi".lower()])
-    c_serie = pick("serie", ["série", "ser", "serie_nf", "serie nfe", "serie nfce"])
-    c_num = pick("numero", ["número", "num", "n°", "nnf", "nf", "numero nf", "numero nota"])
-    c_val = pick("valor", ["vlr total", "vltotal", "valor total", "vl tot", "vl total", "valor nota", "vnf", "v_nf", "total"])
-    c_base = pick("base", ["base icms", "vlbcicms", "bc icms", "vbc", "v_bc", "baseicms"])
-    c_icms = pick("icms", ["valor icms", "vlicms", "icms total", "vl icms", "vicms", "v_icms"])
+    def pick_contains(tokens, prefer_tokens=None):
+        """Retorna a primeira coluna cujo nome normalizado contém TODOS tokens.
+        prefer_tokens (opcional) prioriza colunas que contenham algum desses tokens."""
+        norm_names = list(cols.keys())
+        cand = []
+        for nn in norm_names:
+            ok = True
+            for t in tokens:
+                if t not in nn:
+                    ok = False
+                    break
+            if ok:
+                cand.append(nn)
+        if not cand:
+            return None
+        if prefer_tokens:
+            # prioriza quem contém token preferencial
+            for pt in prefer_tokens:
+                for nn in cand:
+                    if pt in nn:
+                        return cols[nn]
+        return cols[cand[0]]
+
+    # tentativas (match exato)
+    c_data = pick("data", ["dt", "data venda", "data movto", "data_movto", "dtemi", "dhemi"])
+    c_serie = pick("serie", ["série", "ser", "serie_nf", "serie nfe", "serie nfce", "serie cupom", "serie documento"])
+    c_num   = pick("numero", ["número", "num", "n nf", "nnf", "nf", "numero nf", "numero nota", "numero documento", "numero cupom", "no", "nro"])
+    c_val   = pick("valor", ["vlr total", "vltotal", "valor total", "vl tot", "vl total", "valor nota", "vnf", "v_nf", "total", "vlcont", "vltotnf"])
+    c_base  = pick("base", ["base icms", "vlbcicms", "bc icms", "vbc", "v_bc", "baseicms", "base_calculo", "base calculo"])
+    c_icms  = pick("icms", ["valor icms", "vlicms", "icms total", "vl icms", "vicms", "v_icms", "valor_do_icms"])
+
+    # heurísticas (se faltar)
+    if c_serie is None:
+        c_serie = pick_contains(["serie"])
+    if c_num is None:
+        c_num = pick_contains(["num"], prefer_tokens=["numero","nnf","nro"]) or pick_contains(["nf"], prefer_tokens=["numero","num"])
+    if c_val is None:
+        c_val = pick_contains(["valor"], prefer_tokens=["total","vl"]) or pick_contains(["total"])
+    if c_icms is None:
+        c_icms = pick_contains(["icms"], prefer_tokens=["valor","vl"])
+    if c_base is None:
+        # base costuma vir como 'base icms' / 'bc icms' / 'vbc'
+        c_base = pick_contains(["base"], prefer_tokens=["icms","bc","calculo"]) or pick_contains(["bc"], prefer_tokens=["icms"])
 
     out = pd.DataFrame()
     out["data"] = df[c_data].astype(str).str[:10] if c_data is not None else ""
@@ -930,22 +1068,24 @@ def normalize_table(df: pd.DataFrame, fonte: str, dividir_por_100: bool=False) -
         return pd.to_numeric(s, errors="coerce")
 
     out["valor"] = to_num(df[c_val]) if c_val is not None else np.nan
-    out["base"] = to_num(df[c_base]) if c_base is not None else np.nan
-    out["icms"] = to_num(df[c_icms]) if c_icms is not None else np.nan
+    out["base"]  = to_num(df[c_base]) if c_base is not None else np.nan
+    out["icms"]  = to_num(df[c_icms]) if c_icms is not None else np.nan
 
     if dividir_por_100:
         out["valor"] = out["valor"] / 100.0
-        out["base"] = out["base"] / 100.0
-        out["icms"] = out["icms"] / 100.0
+        out["base"]  = out["base"] / 100.0
+        out["icms"]  = out["icms"] / 100.0
 
     out["fonte"] = fonte
 
     # limpeza / tipos
     out = out.dropna(subset=["numero"])
-    out["serie"] = pd.to_numeric(out["serie"], errors="coerce").fillna(0).astype(int)
+    # serie pode vir vazia em algumas planilhas: tenta numérico, senão 0
+    out["serie"]  = pd.to_numeric(out["serie"], errors="coerce").fillna(0).astype(int)
     out["numero"] = pd.to_numeric(out["numero"], errors="coerce").astype(int)
     for c in ["valor","base","icms"]:
         out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0.0).astype(float)
+
     return out
 
 def read_csv_any(file_like, fonte: str = "SEFAZ", dividir_por_100: bool = False):
@@ -1167,6 +1307,7 @@ sefaz_df = pd.DataFrame()
 adm_df = pd.DataFrame()
 flex_df = pd.DataFrame()
 alerts = pd.DataFrame()
+full_df = pd.DataFrame()
 
 if up_sefaz is not None:
     name = up_sefaz.name.lower()
@@ -1194,10 +1335,21 @@ if not sefaz_df.empty and "cancelada" in sefaz_df.columns:
 
 if not sefaz_df.empty:
     alerts = audit(sefaz_df, adm_df, flex_df)
+    full_df = build_full_table(sefaz_df, adm_df, flex_df, alerts)
 
 st.write("")
 
 m = calc_metrics(sefaz_df, adm_df, flex_df, alerts)
+# Se a tabela completa existir, recalcula contadores (mais fiel ao filtro UI)
+if isinstance(full_df, pd.DataFrame) and not full_df.empty:
+    try:
+        m['total_notas'] = int(full_df[['serie','numero']].drop_duplicates().shape[0])
+        m['divergentes'] = int(full_df[full_df['motivo'].astype(str).str.contains('diverg', case=False, na=False)][['serie','numero']].drop_duplicates().shape[0])
+        m['ausentes_adm'] = int(full_df[full_df['status_adm'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])][['serie','numero']].drop_duplicates().shape[0])
+        m['ausentes_flex'] = int(full_df[full_df['status_flex'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])][['serie','numero']].drop_duplicates().shape[0])
+        m['conferidas'] = int(full_df[full_df['motivo'].astype(str).str.lower().eq('conferido')][['serie','numero']].drop_duplicates().shape[0])
+    except Exception:
+        pass
 # Fallback: se por algum motivo o DataFrame SEFAZ não ficou disponível neste ciclo,
 # calculamos os cards a partir da própria tabela de alertas (que já contém valor/base/icms da SEFAZ).
 if (m.get("total_notas", 0) == 0) and (not alerts.empty) and ("valor_sefaz" in alerts.columns):
@@ -1280,26 +1432,20 @@ search = st.text_input("Buscar (número, série ou motivo)", placeholder="Ex.: 1
 if sefaz_df.empty:
     st.info("Carregue o arquivo SEFAZ para ver os resultados.")
 else:
-    base = alerts.copy()
+    base = (full_df.copy() if isinstance(full_df, pd.DataFrame) and not full_df.empty else alerts.copy())
 
     if choice_key == "Divergentes":
-        base = base[base["motivo"].fillna("").str.contains("Divergência", case=False)] if not base.empty else base
+        base = base[base["motivo"].fillna("").str.contains("diverg", case=False)] if not base.empty else base
     elif choice_key == "Ausentes ADM":
-        base = base[base.get("status_adm") == "NAO_ENCONTRADO"] if not base.empty else base
+        base = base[base.get("status_adm").astype(str).isin(["NAO_ENCONTRADO","SEM_ARQUIVO"])] if not base.empty else base
     elif choice_key == "Ausentes Flex":
-        base = base[base.get("status_flex") == "NAO_ENCONTRADO"] if not base.empty else base
+        base = base[base.get("status_flex").astype(str).isin(["NAO_ENCONTRADO","SEM_ARQUIVO"])] if not base.empty else base
     elif choice_key == "Conferidos":
+        # conferidos agora vêm da tabela completa (motivo = Conferido)
         if base.empty:
-            conf = sefaz_df.copy()
+            base = base
         else:
-            problem = base[["serie","numero"]].dropna().drop_duplicates()
-            conf = sefaz_df.merge(problem.assign(_p=1), on=["serie","numero"], how="left")
-            conf = conf[conf["_p"].isna()].drop(columns=["_p"])
-        conf = conf.copy()
-        conf["status_adm"] = "OK"
-        conf["status_flex"] = "OK"
-        conf["motivo"] = "Conferido"
-        base = conf
+            base = base[base.get("motivo").astype(str).str.lower().eq("conferido")]
 
     if search and not base.empty:
         s = search.lower().strip()
