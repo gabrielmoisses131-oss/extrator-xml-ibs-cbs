@@ -926,7 +926,9 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
             "icms": "icms_adm",
             "data": "data_adm",
         })
-        out = out.merge(adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]], on=["serie","numero"], how="left")
+        out[['serie','numero']] = out[['serie','numero']].astype(str)
+    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
+    out = out.merge(adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]], on=["serie","numero"], how="left")
     else:
         out["data_adm"] = np.nan
         out["valor_adm"] = np.nan
@@ -942,7 +944,9 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
             "icms": "icms_flex",
             "data": "data_flex",
         })
-        out = out.merge(flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]], on=["serie","numero"], how="left")
+        out[['serie','numero']] = out[['serie','numero']].astype(str)
+    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
+    out = out.merge(flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]], on=["serie","numero"], how="left")
     else:
         out["data_flex"] = np.nan
         out["valor_flex"] = np.nan
@@ -964,7 +968,9 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
         motivos = (g.groupby(["serie","numero"])["motivo"]
                    .apply(lambda s: " | ".join(pd.unique(s.astype(str))))
                    .reset_index(name="motivo_alerta"))
-        out = out.merge(motivos, on=["serie","numero"], how="left")
+        out[['serie','numero']] = out[['serie','numero']].astype(str)
+    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
+    out = out.merge(motivos, on=["serie","numero"], how="left")
         out["motivo"] = np.where(out["motivo_alerta"].notna(), out["motivo_alerta"], out["motivo"])
         out = out.drop(columns=["motivo_alerta"])
 
@@ -973,14 +979,18 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
             st_adm = (g.groupby(["serie","numero"])["status_adm"]
                       .apply(lambda s: pd.unique(s.astype(str))[-1])
                       .reset_index(name="_status_adm"))
-            out = out.merge(st_adm, on=["serie","numero"], how="left")
+            out[['serie','numero']] = out[['serie','numero']].astype(str)
+    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
+    out = out.merge(st_adm, on=["serie","numero"], how="left")
             out["status_adm"] = np.where(out["_status_adm"].notna(), out["_status_adm"], out["status_adm"])
             out = out.drop(columns=["_status_adm"])
         if "status_flex" in g.columns:
             st_fx = (g.groupby(["serie","numero"])["status_flex"]
                      .apply(lambda s: pd.unique(s.astype(str))[-1])
                      .reset_index(name="_status_flex"))
-            out = out.merge(st_fx, on=["serie","numero"], how="left")
+            out[['serie','numero']] = out[['serie','numero']].astype(str)
+    adm2[['serie','numero']] = adm2[['serie','numero']].astype(str)
+    out = out.merge(st_fx, on=["serie","numero"], how="left")
             out["status_flex"] = np.where(out["_status_flex"].notna(), out["_status_flex"], out["status_flex"])
             out = out.drop(columns=["_status_flex"])
 
@@ -990,6 +1000,19 @@ def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.D
 # UI
 
 
+
+
+def normalize_keys(df):
+    for col in ["serie", "numero"]:
+        if col in df.columns:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(".0", "", regex=False)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+    return df
 
 def normalize_table(df: pd.DataFrame, fonte: str, dividir_por_100: bool=False) -> pd.DataFrame:
     """Normaliza qualquer tabela (CSV/Excel) para o formato padrão:
