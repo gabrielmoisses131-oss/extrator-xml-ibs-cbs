@@ -878,64 +878,85 @@ def upload_block(col, title, desc, key, border_class, types):
         return up
 
 
-def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> dict:
+def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame):
+    """Métricas do painel (foco em valores e presença).
+    - Total de notas: quantidade de notas na SEFAZ (desconsidera canceladas)
+    - Valor total SEFAZ: soma do valor de todas as notas na SEFAZ
+    - Total ICMS apurado: soma do ICMS de todas as notas na SEFAZ
+    - Conferidas: notas presentes nas 3 fontes (SEFAZ + ADM + FLEX)
+    - Divergentes: notas presentes (no mínimo) em SEFAZ e FLEX/ADM com divergência de valor/base/icms
+    - Ausentes ADM/FLEX: notas da SEFAZ que não aparecem na fonte
     """
-    Painel (cards) baseado no dataframe final (alerts_df), porque é ele que alimenta a tabela.
-    Assim, mesmo quando ADM/FLEX não forem carregados, os totais do SEFAZ aparecem.
-    """
-    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
-    sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
+    sef = sefaz_df.copy() if sefaz_df is not None else pd.DataFrame()
+    adm = adm_df.copy() if adm_df is not None else pd.DataFrame()
+    flx = flex_df.copy() if flex_df is not None else pd.DataFrame()
 
-    def _sum_numeric(df: pd.DataFrame, col: str) -> float:
-        if df.empty or col not in df.columns:
-            return 0.0
-        s = pd.to_numeric(df[col], errors="coerce").fillna(0)
-        return float(s.sum())
+    if not sef.empty and "cancelada" in sef.columns:
+        sef = sef[~sef["cancelada"].fillna(False)]
 
-    def _count_notes(df: pd.DataFrame) -> int:
-        if df.empty:
-            return 0
-        if {"serie","numero"}.issubset(df.columns):
-            return int(df[["serie","numero"]].dropna().drop_duplicates().shape[0])
-        return int(len(df))
+    def key(df):
+        if df is None or df.empty:
+            return pd.Series([], dtype="object")
+        if "serie" not in df.columns or "numero" not in df.columns:
+            return pd.Series([], dtype="object")
+        return df["serie"].astype(str) + "-" + df["numero"].astype(str)
 
-    # Totais do SEFAZ (preferir colunas da tabela final)
-    total_valor_sefaz = _sum_numeric(al, "valor_sefaz") or _sum_numeric(sef, "valor")
-    total_icms_apurado = _sum_numeric(al, "icms_sefaz") or _sum_numeric(sef, "icms")
-    total_notas = _count_notes(al[al.get("valor_sefaz").notna()] if (not al.empty and "valor_sefaz" in al.columns) else al) or _count_notes(sef)
+    # dedup por chave (fica a primeira ocorrência)
+    if not sef.empty:
+        sef["_k"] = key(sef)
+        sef = sef.dropna(subset=["_k"]).drop_duplicates("_k", keep="first")
+    if not adm.empty:
+        adm["_k"] = key(adm)
+        adm = adm.dropna(subset=["_k"]).drop_duplicates("_k", keep="first")
+    if not flx.empty:
+        flx["_k"] = key(flx)
+        flx = flx.dropna(subset=["_k"]).drop_duplicates("_k", keep="first")
 
-    # Contagens de status na tabela final
-    conferidas = divergentes = ausentes_adm = ausentes_flex = 0
-    if not al.empty:
-        if "status_adm" in al.columns:
-            ausentes_adm = int(al["status_adm"].astype(str).isin(["SEM_ARQUIVO","NAO_ENCONTRADO"]).sum())
-        if "status_flex" in al.columns:
-            ausentes_flex = int(al["status_flex"].astype(str).isin(["SEM_ARQUIVO","NAO_ENCONTRADO"]).sum())
+    total_notas = int(len(sef)) if not sef.empty else 0
+    valor_total = float(sef["valor"].fillna(0).sum()) if (not sef.empty and "valor" in sef.columns) else 0.0
+    icms_total = float(sef["icms"].fillna(0).sum()) if (not sef.empty and "icms" in sef.columns) else 0.0
 
-        ok_adm = (al["status_adm"].astype(str) == "OK") if "status_adm" in al.columns else pd.Series([False]*len(al))
-        ok_flex = (al["status_flex"].astype(str) == "OK") if "status_flex" in al.columns else pd.Series([False]*len(al))
-        no_div = ~al["motivo"].astype(str).str.contains("Diverg", case=False, na=False) if "motivo" in al.columns else pd.Series([True]*len(al))
+    ks = set(sef["_k"].tolist()) if (not sef.empty and "_k" in sef.columns) else set()
+    ka = set(adm["_k"].tolist()) if (not adm.empty and "_k" in adm.columns) else set()
+    kf = set(flx["_k"].tolist()) if (not flx.empty and "_k" in flx.columns) else set()
 
-        conferidas = int((ok_adm & ok_flex & no_div).sum())
-        divergentes = int(al["motivo"].astype(str).str.contains("Diverg", case=False, na=False).sum()) if "motivo" in al.columns else 0
+    conferidas = int(len(ks & ka & kf)) if ks else 0
+    aus_adm = int(len(ks - ka)) if ks else 0
+    aus_flex = int(len(ks - kf)) if ks else 0
 
-    return {
-        # nomes "canônicos" (interno)
-        "total_valor_sefaz": total_valor_sefaz,
-        "total_icms_apurado": total_icms_apurado,
+    # Divergentes: tenta usar alerts (mais fiel à lógica do app); se não houver, calcula por merge.
+    divergentes = 0
+    if alerts_df is not None and not alerts_df.empty and "motivo" in alerts_df.columns:
+        tmp = alerts_df.copy()
+        if "serie" in tmp.columns and "numero" in tmp.columns:
+            tmp["_k"] = tmp["serie"].astype(str) + "-" + tmp["numero"].astype(str)
+            divergentes = int(tmp[tmp["motivo"].astype(str).str.contains("Divergência", case=False, na=False)]["_k"].nunique())
+    else:
+        # merge sefaz x adm/flex e compara colunas numéricas (tolerância pequena)
+        def compare_to(df_other):
+            if sef.empty or df_other.empty:
+                return set()
+            mrg = sef.merge(df_other[["_k","valor","base","icms"]], on="_k", how="inner", suffixes=("_sef","_oth"))
+            out=set()
+            for col in ["valor","base","icms"]:
+                a = mrg.get(f"{col}_sef")
+                b = mrg.get(f"{col}_oth")
+                if a is None or b is None:
+                    continue
+                diff = (a.fillna(0) - b.fillna(0)).abs()
+                out |= set(mrg.loc[diff > 0.01, "_k"].tolist())
+            return out
+        divergentes = int(len(compare_to(adm) | compare_to(flx)))
 
-        # nomes usados no painel (UI)
-        "valor_total": total_valor_sefaz,
-        "icms_total": total_icms_apurado,
-
-        "total_notas": total_notas,
-        "conferidas": conferidas,
-        "divergentes": divergentes,
-        "ausentes_adm": ausentes_adm,
-        "ausentes_flex": ausentes_flex,
-    }
-
-
+    return dict(
+        total=total_notas,
+        valor_total=valor_total,
+        icms_total=icms_total,
+        conferidas=conferidas,
+        divergentes=divergentes,
+        aus_adm=aus_adm,
+        aus_flex=aus_flex,
+    )
 def style_table(df):
     if df is None or df.empty:
         return df
@@ -1010,46 +1031,6 @@ if not sefaz_df.empty:
 st.write("")
 
 m = calc_metrics(sefaz_df, adm_df, flex_df, alerts)
-# Fallback: se por algum motivo o DataFrame SEFAZ não ficou disponível neste ciclo,
-# calculamos os cards a partir da própria tabela de alertas (que já contém valor/base/icms da SEFAZ).
-if (m.get("total_notas", 0) == 0) and (not alerts.empty) and ("valor_sefaz" in alerts.columns):
-    sef = alerts[alerts["valor_sefaz"].notna()].copy()
-    # chaves únicas por (serie, numero) para não contar duplicado
-    if "serie" in sef.columns and "numero" in sef.columns:
-        sef["_k"] = sef["serie"].astype(str) + "-" + sef["numero"].astype(str)
-        total_notas = sef["_k"].nunique()
-    else:
-        total_notas = len(sef)
-    valor_total = pd.to_numeric(sef["valor_sefaz"], errors="coerce").fillna(0).sum()
-    icms_total = pd.to_numeric(sef.get("icms_sefaz", 0), errors="coerce").fillna(0).sum()
-
-    # conferidas = OK nos 3
-    conferidas = 0
-    if "status_adm" in alerts.columns and "status_flex" in alerts.columns:
-        conferidas = int(((alerts["status_adm"] == "OK") & (alerts["status_flex"] == "OK") & (~alerts["motivo"].astype(str).str.contains("Diverg", case=False, na=False))).sum())
-
-    divergentes = 0
-    if "motivo" in alerts.columns:
-        divergentes = int(alerts["motivo"].astype(str).str.contains("Diverg", case=False, na=False).sum())
-
-    aus_adm = 0
-    if "status_adm" in alerts.columns:
-        aus_adm = int(alerts["status_adm"].isin(["NAO_ENCONTRADO", "SEM_ARQUIVO"]).sum())
-
-    aus_flex = 0
-    if "status_flex" in alerts.columns:
-        aus_flex = int(alerts["status_flex"].isin(["NAO_ENCONTRADO", "SEM_ARQUIVO"]).sum())
-
-    m.update({
-        "valor_total": float(valor_total),
-        "icms_total": float(icms_total),
-        "total_notas": int(total_notas),
-        "conferidas": int(conferidas),
-        "divergentes": int(divergentes),
-        "ausentes_adm": int(aus_adm),
-        "ausentes_flex": int(aus_flex),
-    })
-
 
 sum1, sum2 = st.columns(2, gap="large")
 with sum1:
@@ -1072,18 +1053,18 @@ def kpi(col, title, num, sub, variant, emoji):
         </div>
         ''', unsafe_allow_html=True)
 
-kpi(k1,"TOTAL DE NOTAS", m.get("total_notas", 0), "Notas analisadas", "neutral","🧾")
-kpi(k2,"CONFERIDAS", m.get("conferidas", 0), "Compatíveis", "success","✅")
-kpi(k3,"DIVERGENTES", m.get("divergentes", 0), "Valores diferentes", "danger","⛔")
-kpi(k4,"AUSENTES ADM", m.get("ausentes_adm", 0), "Faltando no ADM", "warn","⚠️")
-kpi(k5,"AUSENTES FLEX", m.get("ausentes_flex", 0), "Faltando no Flex", "warn","⚠️")
+kpi(k1,"TOTAL DE NOTAS", m["total"], "Notas analisadas", "neutral","🧾")
+kpi(k2,"CONFERIDAS", m["conferidas"], "Compatíveis", "success","✅")
+kpi(k3,"DIVERGENTES", m["divergentes"], "Valores diferentes", "danger","⛔")
+kpi(k4,"AUSENTES ADM", m["aus_adm"], "Faltando no ADM", "warn","⚠️")
+kpi(k5,"AUSENTES FLEX", m["aus_flex"], "Faltando no Flex", "warn","⚠️")
 
 st.write("")
 st.markdown('<div class="l-card"><h3 style="margin:0;font-weight:900;">Resultado da Conferência</h3><p style="margin:6px 0 0 0;color:rgba(17,24,39,.6);font-size:13px;">Clique e filtre para ver os detalhes completos</p></div>', unsafe_allow_html=True)
 st.write("")
 
-tabs = ["Todos", "Conferidos", "Divergentes", "Ausentes ADM", "Ausentes Flex"]
-counts = {"Todos": m.get("total_notas", 0), "Conferidos": m.get("conferidas", 0), "Divergentes": m.get("divergentes", 0), "Ausentes ADM": m.get("ausentes_adm", 0), "Ausentes Flex": m.get("ausentes_flex", 0)}
+tabs = ["Todos", "Conferidos", "Divergentes", "Ausentes ADM", "Ausentes FLEX"]
+counts = {"Todos": m["total"], "Conferidos": m["conferidas"], "Divergentes": m["divergentes"], "Ausentes ADM": m["aus_adm"], "Ausentes FLEX": m["aus_flex"]}
 choice = st.radio(" ", [f"{t}  ({counts[t]})" for t in tabs], horizontal=True, label_visibility="collapsed")
 choice_key = choice.split("  (")[0]
 
@@ -1098,7 +1079,7 @@ else:
         base = base[base["motivo"].fillna("").str.contains("Divergência", case=False)] if not base.empty else base
     elif choice_key == "Ausentes ADM":
         base = base[base.get("status_adm") == "NAO_ENCONTRADO"] if not base.empty else base
-    elif choice_key == "Ausentes Flex":
+    elif choice_key == "Ausentes FLEX":
         base = base[base.get("status_flex") == "NAO_ENCONTRADO"] if not base.empty else base
     elif choice_key == "Conferidos":
         if base.empty:
