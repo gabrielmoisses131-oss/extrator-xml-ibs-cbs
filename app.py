@@ -1111,6 +1111,54 @@ def _parse_nnf(root: ET.Element) -> str | None:
             return t
     return None
 
+
+def _to_float_safe(x: str | None) -> float:
+    try:
+        return float(x) if x not in (None, "") else 0.0
+    except Exception:
+        return 0.0
+
+def _sum_taxes_from_xml(xml_bytes: bytes) -> tuple[float, float, float]:
+    """
+    Soma ICMS, PIS e COFINS por XML (NFe/NFCe).
+    Preferência: totais em <total><ICMSTot> (mais confiável).
+    Fallback: soma por item (<det>).
+    """
+    try:
+        root = ET.fromstring(xml_bytes)
+    except Exception:
+        return (0.0, 0.0, 0.0)
+
+    # Totais do documento
+    vICMS = _find_text(root, ".//{*}total/{*}ICMSTot/{*}vICMS")
+    vPIS = _find_text(root, ".//{*}total/{*}ICMSTot/{*}vPIS")
+    vCOFINS = _find_text(root, ".//{*}total/{*}ICMSTot/{*}vCOFINS")
+
+    if any(x not in (None, "") for x in (vICMS, vPIS, vCOFINS)):
+        return (_to_float_safe(vICMS), _to_float_safe(vPIS), _to_float_safe(vCOFINS))
+
+    # Fallback: soma por item
+    icms = pis = cofins = 0.0
+    for det in root.findall(".//{*}det"):
+        icms_node = det.find(".//{*}imposto/{*}ICMS")
+        if icms_node is not None:
+            for el in icms_node.iter():
+                if _local(el.tag) == "vICMS" and el.text:
+                    icms += _to_float_safe(el.text)
+        pis_node = det.find(".//{*}imposto/{*}PIS")
+        if pis_node is not None:
+            for el in pis_node.iter():
+                if _local(el.tag) == "vPIS" and el.text:
+                    pis += _to_float_safe(el.text)
+        cof_node = det.find(".//{*}imposto/{*}COFINS")
+        if cof_node is not None:
+            for el in cof_node.iter():
+                if _local(el.tag) == "vCOFINS" and el.text:
+                    cofins += _to_float_safe(el.text)
+
+    return (icms, pis, cofins)
+
+
 def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
     """
     Extrai itens (det) e IBS/CBS:
@@ -1132,14 +1180,17 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
     for det in dets:
         xprod = _find_text(det, ".//{*}prod/{*}xProd") or ""
         ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
-        if ibscbs is None:
-            # alguns XML podem não ter IBSCBS -> ignora item
-            continue
+        # Se não existir IBSCBS (ex.: NFC-e modelo 65 hoje), ainda exibimos o item
+        # e seguimos com "Valor da operação" via vProd.
 
-        cclass = _find_text(ibscbs, ".//{*}cClassTrib") or ""
-        vbc = _find_text(ibscbs, ".//{*}vBC")
-        vibs = _find_text(ibscbs, ".//{*}vIBS")
-        vcbs = _find_text(ibscbs, ".//{*}vCBS")
+        cclass = (_find_text(ibscbs, ".//{*}cClassTrib") if ibscbs is not None else "") or ""
+        vbc = _find_text(ibscbs, ".//{*}vBC") if ibscbs is not None else None
+        vibs = _find_text(ibscbs, ".//{*}vIBS") if ibscbs is not None else None
+        vcbs = _find_text(ibscbs, ".//{*}vCBS") if ibscbs is not None else None
+        # fallback comum em NF-e/NFC-e: vProd por item
+        vprod = _find_text(det, ".//{*}prod/{*}vProd")
+        if (vbc is None or vbc == "") and vprod not in (None, ""):
+            vbc = vprod
 
         def _to_float(x: str | None):
             try:
@@ -1152,7 +1203,7 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
         vcbs_f = _to_float(vcbs)
 
         # Fonte do valor (base)
-        fonte = "IBSCBS/vBC" if vbc_f is not None else ""
+        fonte = ("IBSCBS/vBC" if ibscbs is not None else "prod/vProd") if vbc_f is not None else ""
 
         rows.append(
             {
@@ -1167,45 +1218,6 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
                 "Fonte do valor": fonte,
             }
         )
-
-
-def _sum_icms_pis_cofins_from_xml(xml_bytes: bytes) -> tuple[float, float, float]:
-    """Soma ICMS/PIS/COFINS por item (det) de um XML de NFe/NFCe.
-
-    - ICMS: soma de todos os <vICMS> dentro de cada <det>
-    - PIS: soma de todos os <vPIS> dentro de cada <det>
-    - COFINS: soma de todos os <vCOFINS> dentro de cada <det>
-
-    Retorna (icms, pis, cofins). Se não encontrar tags, retorna 0.
-    """
-    def _to_float(s: str | None) -> float:
-        if not s:
-            return 0.0
-        try:
-            return float(s.replace(",", "."))
-        except Exception:
-            return 0.0
-
-    try:
-        root = ET.fromstring(xml_bytes)
-    except Exception:
-        return (0.0, 0.0, 0.0)
-
-    icms = pis = cofins = 0.0
-
-    dets = root.findall(".//{*}infNFe/{*}det") or root.findall(".//{*}det")
-    for det in dets:
-        # ICMS pode estar em imposto/ICMS/*/vICMS (várias tags)
-        for el in det.findall(".//{*}vICMS"):
-            icms += _to_float(el.text.strip() if el.text else None)
-
-        for el in det.findall(".//{*}vPIS"):
-            pis += _to_float(el.text.strip() if el.text else None)
-
-        for el in det.findall(".//{*}vCOFINS"):
-            cofins += _to_float(el.text.strip() if el.text else None)
-
-    return (icms, pis, cofins)
 
     return rows
 
@@ -1461,11 +1473,10 @@ if template_bytes is None:
 rows_all: list[dict] = []
 errors: list[str] = []
 
-# Totais extraídos do XML (ICMS / PIS / COFINS)
-total_icms: float = 0.0
-total_pis: float = 0.0
-total_cofins: float = 0.0
-
+# Totais por XML (ICMS/PIS/COFINS)
+total_icms_xml = 0.0
+total_pis_xml = 0.0
+total_cofins_xml = 0.0
 
 if xml_files:
     # Mostra spinner enquanto processa uploads (XML/ZIP)
@@ -1474,6 +1485,8 @@ if xml_files:
     for f in xml_files:
         try:
             b = f.read()
+            # soma ICMS/PIS/COFINS do XML/ZIP
+            
             if f.name.lower().endswith(".zip"):
                 with zipfile.ZipFile(io.BytesIO(b)) as z:
                     xml_names = [n for n in z.namelist() if n.lower().endswith(".xml")]
@@ -1482,24 +1495,22 @@ if xml_files:
                         continue
                     for xn in xml_names:
                         xb = z.read(xn)
-                        # Soma ICMS / PIS / COFINS
-                        ic, pi, co = _sum_icms_pis_cofins_from_xml(xb)
-                        total_icms += ic
-                        total_pis += pi
-                        total_cofins += co
+                        ic, pi, co = _sum_taxes_from_xml(xb)
+                        total_icms_xml += ic
+                        total_pis_xml += pi
+                        total_cofins_xml += co
                         rows = _parse_items_from_xml(xb, f"{f.name}:{xn}")
                         if not rows:
-                            errors.append(f"{f.name}:{xn}: não encontrei itens com IBSCBS")
+                            errors.append(f"{f.name}:{xn}: não encontrei itens no XML")
                         rows_all.extend(rows)
             else:
-                # Soma ICMS / PIS / COFINS
-                ic, pi, co = _sum_icms_pis_cofins_from_xml(b)
-                total_icms += ic
-                total_pis += pi
-                total_cofins += co
+                ic, pi, co = _sum_taxes_from_xml(b)
+                total_icms_xml += ic
+                total_pis_xml += pi
+                total_cofins_xml += co
                 rows = _parse_items_from_xml(b, f.name)
                 if not rows:
-                    errors.append(f"{f.name}: não encontrei itens com IBSCBS")
+                    errors.append(f"{f.name}: não encontrei itens no XML")
                 rows_all.extend(rows)
         except Exception as e:
             errors.append(f"{f.name}: erro ao ler ({e})")
@@ -1619,7 +1630,11 @@ base_cbs = float(df["Valor da operação"].fillna(0).sum()) if (not df.empty and
 # Totais exibidos nos cards = soma das bases
 ibs_total = round(base_ibs, 2)
 cbs_total = round(base_cbs, 2)
-total_tributos = round(base_ibs + base_cbs, 2)
+total_tributos = round(total_icms_xml, 2)
+
+# Totais novos (painéis)
+total_pis = round(total_pis_xml, 2)
+total_cofins = round(total_cofins_xml, 2)
 
 # Créditos: 1% sobre UMA base (IBS ou CBS)
 creditos_total = round(base_ibs * 0.01, 2)
@@ -1718,7 +1733,7 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="value">{money(total_icms)}</div>
+      <div class="value">{money(total_tributos)}</div>
       <div class="sub">Soma do ICMS (XML)</div>
     </div>
   </a>
@@ -1732,18 +1747,18 @@ st.markdown(
 )
 # Painéis (estilo Figma) — Débitos vs Créditos
 c1, c2 = st.columns(2, gap="large")
-ibs_deb = float(total_pis or 0.0)
-cbs_deb = float(total_cofins or 0.0)
-ibs_cred = 0.0
-cbs_cred = 0.0
+pis_deb = float(total_pis or 0.0)
+cof_deb = float(total_cofins or 0.0)
+pis_cred = 0.0
+cof_cred = 0.0
 
 def _bar_width(val, vmax):
     if vmax <= 0:
         return "0%"
     return f"{max(0.0, min(1.0, val / vmax)) * 100:.1f}%"
 
-max_ibs = max(ibs_deb, ibs_cred, 1e-9)
-max_cbs = max(cbs_deb, cbs_cred, 1e-9)
+max_pis = max(pis_deb, pis_cred, 1e-9)
+max_cof = max(cof_deb, cof_cred, 1e-9)
 
 with c1:
     st.markdown(
@@ -1767,18 +1782,18 @@ with c1:
   </div>
 
   <div class="bar-row">
-<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(ibs_deb)}</span></div>
-<div class="bar-track"><div class="bar-fill ibs" style="width:{_bar_width(ibs_deb, max_ibs)}"></div></div>
+<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(pis_deb)}</span></div>
+<div class="bar-track"><div class="bar-fill ibs" style="width:{_bar_width(pis_deb, max_pis)}"></div></div>
   </div>
 
   <div class="bar-row">
-<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(ibs_cred)}</span></div>
-<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(ibs_cred, max_ibs)}"></div></div>
+<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(pis_cred)}</span></div>
+<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(pis_cred, max_pis)}"></div></div>
   </div>
 
   <div class="bar-foot green">
     <strong>Saldo a Recolher</strong>
-<span class="badge-money" style="color:#2563eb;">{money(ibs_deb - ibs_cred)}</span>
+<span class="badge-money" style="color:#2563eb;">{money(pis_deb - pis_cred)}</span>
   </div>
 </div>
 """,
@@ -1807,18 +1822,18 @@ with c2:
   </div>
 
   <div class="bar-row">
-<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(cbs_deb)}</span></div>
-<div class="bar-track"><div class="bar-fill cbs" style="width:{_bar_width(cbs_deb, max_cbs)}"></div></div>
+<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(cof_deb)}</span></div>
+<div class="bar-track"><div class="bar-fill cbs" style="width:{_bar_width(cof_deb, max_cof)}"></div></div>
   </div>
 
   <div class="bar-row">
-<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(cbs_cred)}</span></div>
-<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(cbs_cred, max_cbs)}"></div></div>
+<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(cof_cred)}</span></div>
+<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(cof_cred, max_cof)}"></div></div>
   </div>
 
   <div class="bar-foot">
     <strong>Saldo a Recolher</strong>
-<span class="badge-money" style="color:#16a34a;">{money(cbs_deb - cbs_cred)}</span>
+<span class="badge-money" style="color:#16a34a;">{money(cof_deb - cof_cred)}</span>
   </div>
 </div>
 """,
