@@ -1656,11 +1656,17 @@ if selected_kpi not in ("all", "ibs", "cbs", "cred", "total"):
     selected_kpi = "all"
 
 
+# Progresso relativo dos KPIs (só visual)
+max_kpi = max(float(ibs_total or 0), float(cbs_total or 0), float(creditos_total or 0), float(total_tributos or 0), 1e-9)
+def _pct(v):
+    v = float(v or 0)
+    return f"{max(0.0, min(1.0, v/max_kpi))*100:.1f}%"
+
 st.markdown(
     f"""
 <div class="kpi-grid">
   <a class="kpi-link" href="?kpi=ibs">
-    <div class="kpi kpi-ibs {'is-active' if selected_kpi=='ibs' else ''}">
+    <div class="kpi kpi-ibs {'is-active' if selected_kpi=='ibs' else ''}" style="--w:{_pct(ibs_total)};">
       <div class="kpi-head">
         <div>
           <div class="label">IBS Total</div>
@@ -1676,11 +1682,12 @@ st.markdown(
       </div>
       <div class="value">{money(ibs_total)}</div>
       <div class="sub">Soma das bases IBS (XML)</div>
+      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cbs">
-    <div class="kpi kpi-cbs {'is-active' if selected_kpi=='cbs' else ''}">
+    <div class="kpi kpi-cbs {'is-active' if selected_kpi=='cbs' else ''}" style="--w:{_pct(cbs_total)};">
       <div class="kpi-head">
         <div>
           <div class="label">CBS Total</div>
@@ -1695,11 +1702,12 @@ st.markdown(
       </div>
       <div class="value">{money(cbs_total)}</div>
       <div class="sub">Soma das bases CBS (XML)</div>
+      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cred">
-    <div class="kpi kpi-cred {'is-active' if selected_kpi=='cred' else ''}">
+    <div class="kpi kpi-cred {'is-active' if selected_kpi=='cred' else ''}" style="--w:{_pct(creditos_total)};">
       <div class="kpi-head">
         <div>
           <div class="label">Créditos</div>
@@ -1715,11 +1723,12 @@ st.markdown(
       </div>
       <div class="value">{money(creditos_total)}</div>
       <div class="sub">Somatório de vIBS + vCBS</div>
+      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=total">
-    <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}">
+    <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}" style="--w:{_pct(total_tributos)};">
       <div class="kpi-head">
         <div>
           <div class="label">ICMS Total</div>
@@ -1735,6 +1744,7 @@ st.markdown(
       </div>
       <div class="value">{money(total_tributos)}</div>
       <div class="sub">Soma do ICMS (XML)</div>
+      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 </div>
