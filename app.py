@@ -1,1926 +1,1520 @@
-# -*- coding: utf-8 -*-
-"""
-Extrator XML -> Planilha (IBS/CBS)
-- Faz upload de 1+ XML (NFe/NFCe) e opcionalmente uma planilha modelo (.xlsx)
-- Extrai: Data, Número da Nota, Item/Serviço, cClassTrib, Base (vBC), vIBS, vCBS, arquivo, Fonte do valor
-- Grava na aba "LANCAMENTOS" preservando fórmulas/validações existentes (Excel recalcula ao abrir)
-
-Como rodar:
-  python -m pip install -r requirements.txt
-  python -m streamlit run app.py
-"""
-import io
-import zipfile
-from datetime import datetime, date
-import xml.etree.ElementTree as ET
-
-import pandas as pd
 import streamlit as st
-import html
-import time
-from openpyxl import load_workbook
-from textwrap import dedent
+import pandas as pd
+import numpy as np
+from io import BytesIO
+from datetime import datetime
+from dateutil import parser as dtparser
+from lxml import etree
+import zipfile
+import re
+import os
+
+# ============================
+# Leitura/normalização robusta (ADM/FLEX)
+# ============================
+
+def _norm_name(s: str) -> str:
+    s = str(s).strip().lower()
+    repl = {"ç":"c","ã":"a","á":"a","à":"a","â":"a","é":"e","ê":"e","í":"i","ó":"o","ô":"o","õ":"o","ú":"u"}
+    for a,b in repl.items():
+        s = s.replace(a,b)
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def _digits_only(x):
+    s = str(x).strip()
+    s = s.replace(".0", "")
+    s = re.sub(r"[^0-9]", "", s)
+    return s
+
+def _pick_col(df, wants):
+    cols = list(df.columns)
+    norm = {c:_norm_name(c) for c in cols}
+    for w in wants:
+        for c,n in norm.items():
+            if w in n:
+                return c
+    return None
+
+def _ensure_serie_numero(df: pd.DataFrame) -> pd.DataFrame:
+    # mapeia nomes comuns -> serie/numero
+    if "serie" not in df.columns:
+        c = _pick_col(df, ["serie", "ser"])
+        if c: df = df.rename(columns={c:"serie"})
+    if "numero" not in df.columns:
+        c = _pick_col(df, ["numero", "nro", "num", "documento", "nf", "nfce"])
+        if c: df = df.rename(columns={c:"numero"})
+
+    # normaliza valores
+    if "serie" in df.columns:
+        df["serie"] = df["serie"].apply(_digits_only).replace("", np.nan)
+        df["serie"] = df["serie"].astype("string").str.lstrip("0").replace("", np.nan)
+    if "numero" in df.columns:
+        df["numero"] = df["numero"].apply(_digits_only).replace("", np.nan)
+        df["numero"] = df["numero"].astype("string").str.lstrip("0").replace("", np.nan)
+
+    return df
+
+def read_excel_smart(uploaded_file):
+    """Lê Excel tentando descobrir a linha do cabeçalho (quando vem com títulos acima)."""
+    try:
+        raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+        best_i, best_score = 0, -1
+        for i in range(min(30, len(raw))):
+            vals = [_norm_name(v) for v in raw.iloc[i].tolist()]
+            score = 0
+            if any("serie" in v or v == "ser" for v in vals): score += 2
+            if any(("numero" in v) or (v == "num") or ("nro" in v) or (v == "nf") for v in vals): score += 2
+            if any(("valor" in v) or ("icms" in v) or ("base" in v) for v in vals): score += 1
+            if score > best_score:
+                best_i, best_score = i, score
+        df = pd.read_excel(uploaded_file, sheet_name=0, header=best_i)
+        df = df.dropna(axis=1, how="all")
+        return df
+    except Exception:
+        return pd.read_excel(uploaded_file, sheet_name=0)
+
+
+st.set_page_config(page_title="Auditor Fiscal NFC-e", page_icon="🛡️", layout="wide")
 
 # -----------------------------
-# Page config + CSS (Figma-like)
+# Premium UI (Lovable-inspired)
 # -----------------------------
-st.set_page_config(page_title="Extrator XML - IBS/CBS", layout="wide")
-
-
-# --- UI premium (somente visual, não altera cálculos) ---
-st.markdown(r"""
+st.markdown("""
 <style>
-/* Premium dark theme - non-invasive */
-:root{
-  --bg1: #050A14;
-  --bg2: #0A1222;
-  --card: rgba(255,255,255,0.04);
-  --card2: rgba(255,255,255,0.06);
-  --stroke: rgba(255,255,255,0.10);
-  --text: rgba(255,255,255,0.92);
-  --muted: rgba(255,255,255,0.65);
-}
-.stApp {
-  background: radial-gradient(1200px 800px at 20% 20%, rgba(88,101,242,0.16), transparent 60%),
-              radial-gradient(1200px 800px at 80% 30%, rgba(16,185,129,0.12), transparent 55%),
-              linear-gradient(180deg, var(--bg1), var(--bg2));
-  color: var(--text);
-}
-.block-container { padding-top: 2rem; }
-[data-testid="stFileUploader"] section { background: var(--card); border: 1px solid var(--stroke); border-radius: 14px; padding: 14px; }
-[data-testid="stMetric"] { background: var(--card); border: 1px solid var(--stroke); border-radius: 16px; padding: 16px; }
-div[data-testid="stMetric"] label { color: var(--muted); }
-hr { border-color: rgba(255,255,255,0.10); }
-</style>
-""", unsafe_allow_html=True)
-CSS = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 :root{
-  --card: rgba(255,255,255,.92);
-  --card2: rgba(255,255,255,.82);
-  --ink: #0f172a;
-  --muted:#64748b;
-  --line: rgba(15,23,42,.10);
-  --shadow: 0 18px 45px rgba(2,6,23,.10);
-  --shadow2: 0 26px 70px rgba(2,6,23,.16);
-  --radius: 18px;
+  --bg: #0b1220;
+  --card: rgba(17,24,39,.72);
+  --card2: rgba(17,24,39,.88);
+  --border: rgba(148,163,184,.18);
+  --muted: rgba(226,232,240,.65);
+  --text: rgba(226,232,240,.95);
 
-  --blue:#2563eb;
-  --green:#16a34a;
-  --amber:#f59e0b;
-  --purple:#7c3aed;
+  --primary: #3b82f6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  --grad-hero: linear-gradient(135deg, #3b82f6 0%, #7c3aed 50%, #db2777 100%);
+  --grad-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --grad-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --grad-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --shadow2: 0 20px 45px rgba(0,0,0,.45);
+  --r: 18px;
 }
 
+html, body, [class*="css"]  { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+/* Page background */
 .stApp{
-  background:
-    radial-gradient(1200px 520px at 12% -10%, rgba(37,99,235,.18), transparent 45%),
-    radial-gradient(900px 520px at 110% 10%, rgba(124,58,237,.18), transparent 50%),
-    radial-gradient(900px 520px at 40% 120%, rgba(22,163,74,.14), transparent 45%),
-    #f6f8fc !important;
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif !important;
+  background: radial-gradient(1200px 600px at 80% -20%, rgba(59,130,246,.22), transparent 60%),
+              radial-gradient(900px 500px at -10% 10%, rgba(16,185,129,.18), transparent 55%),
+              radial-gradient(1000px 600px at 50% 120%, rgba(245,158,11,.12), transparent 60%),
+              var(--bg);
 }
 
-.block-container{
-  padding-top: 1.5rem !important;
-  padding-bottom: 2.5rem !important;
-  max-width: 1200px !important;
-}
+/* Reduce Streamlit chrome */
+header[data-testid="stHeader"], footer { visibility: hidden; height: 0; }
 
-h1,h2,h3,h4,h5,h6{ color: var(--ink) !important; letter-spacing: -.02em; }
-p,li,span,small,.stCaption{ color: var(--muted) !important; }
-
-/* Sidebar (coluna arredondada estilo app) */
-section[data-testid="stSidebar"]{
-  background: radial-gradient(800px 520px at 30% 0%, rgba(37,99,235,.35), transparent 50%),
-              radial-gradient(800px 520px at 70% 80%, rgba(124,58,237,.35), transparent 55%),
-              #0b1220 !important;
-
-  /* Contorno + formato de “painel” */
-  border: 1px solid rgba(255,255,255,.12) !important;
-  border-radius: 22px !important;
-  box-shadow: 0 20px 55px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.05) !important;
-
-  /* Respiro para parecer coluna flutuante */
-  margin: 12px !important;
-  overflow: hidden !important;
-}
-
-/* Garante que o conteúdo interno respeite o arredondado e ocupe a altura toda */
-section[data-testid="stSidebar"] > div{
-  border-radius: 22px !important;
-  overflow: hidden !important;
-  height: calc(100vh - 24px) !important;
-}
-
-/* Texto/cores dentro da sidebar */
-section[data-testid="stSidebar"] *{ color: rgba(255,255,255,.92) !important; }
-section[data-testid="stSidebar"] .stCaption,
-section[data-testid="stSidebar"] small{ color: rgba(255,255,255,.65) !important; }
-
-/* Cards */
-.card{
-  background: linear-gradient(180deg, var(--card), var(--card2));
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+/* Generic card */
+.l-card{ 
+  border: 1px solid var(--border);
+  background: rgba(17,24,39,.55);
+  backdrop-filter: blur(14px);
+  border-radius: var(--r);
+  padding: 18px 18px;
   box-shadow: var(--shadow);
-  padding: 18px 20px;
-  backdrop-filter: blur(10px);
 }
-.card + .card{ margin-top: 14px; }
 
-/* Top header (match premium mock) */
-.topbar{
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
-  border: 1px solid rgba(15,23,42,.10);
-  border-radius: 18px;
+/* Header hero */
+.l-hero{
+  border: 1px solid var(--border);
+  background: rgba(17,24,39,.55);
+  backdrop-filter: blur(18px);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
   box-shadow: var(--shadow);
-  padding: 16px 18px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap: 16px;
+  display:flex; align-items:center; justify-content:space-between;
+  position: relative; overflow:hidden;
 }
-.topbar .brand{ display:flex; align-items:center; gap: 12px; }
-.brand-badge{
-  width: 44px;
-  height: 44px;
-  border-radius: 16px;
-  background: rgba(15,23,42,.04);
-  border: 1px solid rgba(15,23,42,.08);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex: 0 0 auto;
+.l-hero:before{
+  content:"";
+  position:absolute; inset:-2px;
+  background: radial-gradient(500px 220px at 80% 0%, rgba(59,130,246,.18), transparent 70%),
+              radial-gradient(420px 220px at 0% 30%, rgba(16,185,129,.14), transparent 70%);
+  pointer-events:none;
 }
-.brand-badge svg{ width: 22px; height: 22px; }
-.topbar h1{ margin:0; font-size: 1.45rem; font-weight: 900; color:#0f172a; }
-.topbar .sub{ margin-top:2px; font-size:.92rem; color:#64748b; }
-.status-pill{
-  display:inline-flex;
-  align-items:center;
-  gap: 8px;
+.l-hero-left{ display:flex; gap:14px; align-items:center; position:relative; }
+.l-icon{
+  width:46px; height:46px; border-radius: 16px;
+  background: var(--grad-hero);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 0 40px rgba(59,130,246,.25);
+  font-size:22px;
+}
+.l-title{ margin:0; font-weight:900; font-size:20px; letter-spacing:-.02em; color: var(--text);} 
+.l-sub{ margin:2px 0 0 0; font-weight:600; font-size:12.5px; color: var(--muted);} 
+.l-badge{
+  position:relative;
+  display:flex; gap:8px; align-items:center;
+  border: 1px solid rgba(16,185,129,.25);
+  background: rgba(16,185,129,.12);
+  color: #34d399;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(15,23,42,.04);
-  border: 1px solid rgba(15,23,42,.08);
-  font-weight: 800;
-  color:#475569;
-  white-space: nowrap;
-}
-.status-dot{ width:8px; height:8px; border-radius: 999px; background: #64748b; }
-
-.hr{ height:1px; background: rgba(15,23,42,.10); margin: 18px 0; }
-
-.pill{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  padding: 7px 11px;
-  border-radius: 999px;
-  background: rgba(15,23,42,.05);
-  border: 1px solid rgba(15,23,42,.08);
-  color: var(--muted);
-  font-weight: 700;
-  font-size: .82rem;
+  font-weight:800; font-size:12.5px;
 }
 
-/* KPI grid + clickable cards */
-.kpi-grid{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-@media(max-width:1200px){ .kpi-grid{ grid-template-columns: repeat(2, 1fr);} }
-@media(max-width:650px){ .kpi-grid{ grid-template-columns: 1fr;} }
-
-.kpi-link{ text-decoration:none !important; color: inherit !important; display:block; }
-
-.kpi{
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
-  border: 1px solid rgba(15,23,42,.10);
-  border-radius: 18px;
+/* Upload cards */
+.upload-card{
+  border: 2px dashed var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.45);
+  transition: all .25s ease;
   box-shadow: var(--shadow);
-  padding: 16px 18px;
-  position: relative;
-  overflow:hidden;
-  transition: transform .22s ease, box-shadow .22s ease, filter .22s ease;
-  cursor: pointer;
 }
+.upload-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); border-color: rgba(148,163,184,.35); }
+.upload-card.blue:hover{ border-color: rgba(59,130,246,.55); background: rgba(59,130,246,.05); }
+.upload-card.green:hover{ border-color: rgba(16,185,129,.55); background: rgba(16,185,129,.05); }
+.upload-card.amber:hover{ border-color: rgba(245,158,11,.55); background: rgba(245,158,11,.05); }
+.upload-title{ font-weight:900; font-size:15px; margin-top:8px; }
+.upload-desc{ margin:6px 0 12px 0; color: var(--muted); font-size:12.5px; font-weight:600; }
 
-.kpi::before{
-  content:"";
-  position:absolute; left:0; top:0; bottom:0; width: 5px;
-  background: #cbd5e1;
-}
-.kpi.kpi-ibs::before{ background: var(--blue); }
-.kpi.kpi-cbs::before{ background: var(--green); }
-.kpi.kpi-cred::before{ background: var(--amber); }
-.kpi.kpi-total::before{ background: var(--purple); }
-
-.kpi::after{
-  content:"";
-  position:absolute;
-  width: 240px; height: 240px;
-  right:-90px; top:-110px;
+.small-pill{
+  display:inline-flex; gap:8px; align-items:center;
   border-radius: 999px;
-  opacity: .55;
-  background: radial-gradient(circle at 30% 30%, rgba(37,99,235,.20), transparent 60%);
+  padding: 8px 12px;
+  border: 1px dashed rgba(148,163,184,.25);
+  color: var(--muted);
+  font-weight:700;
+  font-size:12.5px;
 }
-.kpi.kpi-cbs::after{ background: radial-gradient(circle at 30% 30%, rgba(22,163,74,.22), transparent 60%); }
-.kpi.kpi-cred::after{ background: radial-gradient(circle at 30% 30%, rgba(245,158,11,.26), transparent 60%); }
-.kpi.kpi-total::after{ background: radial-gradient(circle at 30% 30%, rgba(124,58,237,.22), transparent 60%); }
+.small-pill.ok{ border-style:solid; background: rgba(148,163,184,.08); color: rgba(226,232,240,.92); }
 
-.kpi:hover{ transform: translateY(-6px); box-shadow: var(--shadow2); }
-.kpi:active{ transform: translateY(-2px); box-shadow: var(--shadow); }
-
-.kpi.is-active{
-  outline: 3px solid rgba(15,23,42,.10);
-  box-shadow: var(--shadow2);
-  transform: translateY(-4px);
+/* Big gradients (Valor/ICMS) */
+.grad{
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.55);
+  box-shadow: var(--shadow);
+  position: relative; overflow:hidden;
 }
-
-.kpi-head{ display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; margin-bottom: 8px; position: relative; z-index: 1; }
-.kpi-icon{
-  width: 40px; height: 40px; border-radius: 14px;
-  border: 1px solid rgba(15,23,42,.08);
-  display:flex; align-items:center; justify-content:center;
-  background: rgba(255,255,255,.72);
-  box-shadow: 0 10px 25px rgba(2,6,23,.08);
+.grad:before{
+  content:""; position:absolute; inset:-2px; opacity:.55;
+  background: radial-gradient(400px 160px at 20% 0%, rgba(59,130,246,.35), transparent 60%);
 }
-.kpi-icon svg{ width: 18px; height: 18px; opacity:.95; }
+.grad.bluepurp:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(59,130,246,.38), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(124,58,237,.30), transparent 65%); }
+.grad.green:before{ background: radial-gradient(480px 180px at 18% 0%, rgba(16,185,129,.35), transparent 60%), radial-gradient(420px 160px at 70% 10%, rgba(52,211,153,.18), transparent 65%); }
+.grad-label{ position:relative; margin:0; color: var(--muted); font-weight:800; letter-spacing:.06em; text-transform:uppercase; font-size:12px; }
+.grad-value{ position:relative; margin:8px 0 0 0; color: var(--text); font-weight:950; font-size:22px; }
 
-.kpi .label{ color: var(--muted); font-size: .90rem; font-weight: 700; }
-.kpi .value{ color: var(--ink); font-size: 1.75rem; font-weight: 900; letter-spacing: -0.02em; position: relative; z-index: 1; }
-.kpi .sub{ color: var(--muted); font-size: .86rem; margin-top: 4px; position: relative; z-index: 1; }
-
-/* Panels */
-.panel-title{ display:flex; align-items:flex-start; gap: 10px; margin-bottom: 8px; }
-.panel-title h3{ margin:0; font-size: 1.05rem; color: var(--ink) !important; }
-.panel-title .hint{ color: var(--muted); font-size: 0.86rem; margin-top: 2px; }
-
-.icon{
-  width: 34px; height: 34px; border-radius: 12px;
-  border: 1px solid rgba(15,23,42,.08);
-  display:flex; align-items:center; justify-content:center;
-  background: rgba(255,255,255,.78);
-  box-shadow: 0 10px 25px rgba(2,6,23,.08);
-}
-.icon svg{ width: 18px; height: 18px; opacity:.95; }
-
-.bar-track{ height: 10px; background: rgba(15,23,42,.06); border-radius: 999px; overflow:hidden; border: 1px solid rgba(15,23,42,.07);}
-.bar-fill{ height:100%; border-radius: 999px; }
-.bar-fill.ibs{ background: var(--blue); }
-.bar-fill.cbs{ background: var(--green); }
-.bar-fill.cred{ background: var(--amber); }
-
-.bar-label{ display:flex; justify-content:space-between; align-items:center; font-size: 0.92rem; color: var(--muted); margin-bottom: 6px; }
-.bar-foot{ display:flex; justify-content:space-between; align-items:center; margin-top: 10px; padding-top: 10px; border-top:1px solid rgba(15,23,42,.10); }
-.badge-money{ font-weight: 900; }
-
-/* Buttons */
-.stButton>button, .stDownloadButton>button{
-  background: linear-gradient(135deg, #111827, #0f172a) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255,255,255,.10) !important;
-  border-radius: 14px !important;
-  padding: 10px 14px !important;
-  font-weight: 900 !important;
-  box-shadow: 0 14px 35px rgba(2,6,23,.20) !important;
-  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease !important;
-}
-.stButton>button:hover, .stDownloadButton>button:hover{
-  transform: translateY(-2px) !important;
-  box-shadow: 0 22px 55px rgba(2,6,23,.26) !important;
-  filter: brightness(1.03) !important;
-}
-.stButton>button:active, .stDownloadButton>button:active{ transform: translateY(0px) !important; }
-
-/* Inputs */
-.stTextInput input, .stDateInput input{
-  border-radius: 14px !important;
-  border: 1px solid rgba(15,23,42,.12) !important;
-  box-shadow: 0 10px 25px rgba(2,6,23,.06) !important;
-}
-.stSelectbox div[data-baseweb="select"] > div{
-  border-radius: 14px !important;
-  border: 1px solid rgba(15,23,42,.12) !important;
-  box-shadow: 0 10px 25px rgba(2,6,23,.06) !important;
-}
-
-/* DataFrame */
-.stDataFrame{
-  border-radius: 16px !important;
-  overflow:hidden !important;
-  border: 1px solid rgba(15,23,42,.10) !important;
-  box-shadow: 0 18px 45px rgba(2,6,23,.10) !important;
-}
-
-/* Uploader custom card */
-.uploader-box{
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 18px;
-  padding: 16px;
-  box-shadow: 0 18px 40px rgba(0,0,0,.25);
-}
-
-/* === FIX: remove decorative giant icons === */
-.kpi::after{ display: none !important; }
-
-/* Tip (Dica importante) – premium + icon sized correctly */
-.tip{
-  display:flex;
-  gap: 12px;
-  align-items:flex-start;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #fff7ed;
-  border: 1px solid rgba(180,83,9,.18);
-  box-shadow: 0 12px 35px rgba(2,6,23,.06);
-}
-.tip strong{ display:block; color:#b45309; font-weight:900; margin-bottom:2px; }
-.tip span{ color:#92400e !important; font-size:.92rem; }
-.tip-icon{
-  width: 36px;
-  height: 36px;
-  border-radius: 14px;
-  background: rgba(245,158,11,.18);
-  border: 1px solid rgba(245,158,11,.22);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex: 0 0 auto;
-}
-.tip-icon svg { width: 18px; height: 18px; }
-
-/* ===== FIX UPLOAD ZONA BRANCA (SIDEBAR) ===== */
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]{
-  background: rgba(255,255,255,.06) !important;
-  border: 1px dashed rgba(255,255,255,.22) !important;
-  border-radius: 18px !important;
-  padding: 14px !important;
-}
-
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] *{
-  color: rgba(255,255,255,.90) !important;
-}
-
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] svg{
-  fill: rgba(255,255,255,.90) !important;
-  color: rgba(255,255,255,.90) !important;
-  opacity: 1 !important;
-}
-
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button{
-  background: rgba(255,255,255,.10) !important;
-  border: 1px solid rgba(255,255,255,.18) !important;
-  color: rgba(255,255,255,.92) !important;
-  border-radius: 12px !important;
-}
-
-/* ===== TABELA PREMIUM (igual vídeo) ===== */
-.table-wrap{
-  background: rgba(255,255,255,.92);
-  border: 1px solid rgba(15,23,42,.10);
-  border-radius: 18px;
-  box-shadow: 0 18px 45px rgba(2,6,23,.10);
-  padding: 16px;
-  margin-top: 10px;
-}
-
-
-/* ===== GLOW NO CONTORNO DOS KPIs (hover por cor) ===== */
+/* KPI cards (StatCard vibe) */
 .kpi{
-  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
-}
-
-/* IBS - azul */
-.kpi.kpi-ibs:hover{
-  box-shadow:
-    0 26px 70px rgba(2,6,23,.16),
-    0 0 0 1px rgba(37,99,235,.25),
-    0 0 22px rgba(37,99,235,.35),
-    0 0 60px rgba(37,99,235,.18) !important;
-}
-
-/* CBS - verde */
-.kpi.kpi-cbs:hover{
-  box-shadow:
-    0 26px 70px rgba(2,6,23,.16),
-    0 0 0 1px rgba(22,163,74,.25),
-    0 0 22px rgba(22,163,74,.35),
-    0 0 60px rgba(22,163,74,.18) !important;
-}
-
-/* Créditos - laranja */
-.kpi.kpi-cred:hover{
-  box-shadow:
-    0 26px 70px rgba(2,6,23,.16),
-    0 0 0 1px rgba(245,158,11,.30),
-    0 0 22px rgba(245,158,11,.40),
-    0 0 60px rgba(245,158,11,.18) !important;
-}
-
-/* Total - roxo */
-.kpi.kpi-total:hover{
-  box-shadow:
-    0 26px 70px rgba(2,6,23,.16),
-    0 0 0 1px rgba(124,58,237,.28),
-    0 0 22px rgba(124,58,237,.38),
-    0 0 60px rgba(124,58,237,.18) !important;
-}
-
-
-/* ===== GLOW NOS PAINÉIS DE DÉBITOS x CRÉDITOS ===== */
-.card{
-  transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
-}
-
-/* IBS painel (azul) */
-.card.ibs-panel:hover{
-  box-shadow:
-    0 20px 55px rgba(2,6,23,.18),
-    0 0 0 1px rgba(37,99,235,.22),
-    0 0 26px rgba(37,99,235,.30),
-    0 0 70px rgba(37,99,235,.16) !important;
-}
-
-/* CBS painel (verde) */
-.card.cbs-panel:hover{
-  box-shadow:
-    0 20px 55px rgba(2,6,23,.18),
-    0 0 0 1px rgba(22,163,74,.22),
-    0 0 26px rgba(22,163,74,.30),
-    0 0 70px rgba(22,163,74,.16) !important;
-}
-
-
-/* ===== GLOW NA SIDEBAR (neon suave) ===== */
-section[data-testid="stSidebar"]{
-  box-shadow:
-    0 30px 80px rgba(2,6,23,.45),
-    0 0 0 1px rgba(99,102,241,.20),
-    0 0 28px rgba(99,102,241,.35),
-    0 0 90px rgba(99,102,241,.18) !important;
-  transition: box-shadow .3s ease;
-}
-
-/* Intensifica levemente ao passar o mouse */
-section[data-testid="stSidebar"]:hover{
-  box-shadow:
-    0 35px 95px rgba(2,6,23,.55),
-    0 0 0 1px rgba(99,102,241,.28),
-    0 0 36px rgba(99,102,241,.45),
-    0 0 120px rgba(99,102,241,.22) !important;
-}
-
-
-
-/* ===== LOADER (UIVERSE SVG) – 4 CORES (IGUAL AOS CARDS) ===== */
-:root{
-  --ibs:#2563eb;   /* azul IBS */
-  --cbs:#16a34a;   /* verde CBS */
-  --cred:#f59e0b;  /* laranja Créditos */
-  --total:#7c3aed; /* roxo Total */
-}
-
-/* some o ícone verde padrão */
-div[data-testid="stStatusWidget"] { display:none !important; }
-
-/* overlay premium */
-.spinner-overlay{
-  position: fixed;
-  inset: 0;
-  z-index: 99999;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background: rgba(15,23,42,.22);
-  backdrop-filter: blur(6px);
-}
-
-.spinner-card{
-  width: min(520px, calc(100vw - 40px));
-  border-radius: 22px;
-  padding: 18px 18px 16px;
-  background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.78));
-  border: 1px solid rgba(15,23,42,.10);
-  box-shadow: 0 26px 70px rgba(2,6,23,.22);
-  display:flex;
-  align-items:center;
-  gap: 14px;
-}
-
-.pl{ width: 64px; height: 64px; flex: 0 0 auto; }
-
-.pl__ring{ animation: ringA var(--speed, 2s) linear infinite; }
-.pl__ring--a{ stroke: var(--c1); }
-.pl__ring--b{ animation-name: ringB; stroke: var(--c2); }
-.pl__ring--c{ animation-name: ringC; stroke: var(--c1); }
-.pl__ring--d{ animation-name: ringD; stroke: var(--c2); }
-
-/* textos */
-.spinner-texts{ display:flex; flex-direction:column; gap: 3px; min-width:0; }
-.spinner-title{
-  font-weight: 900;
-  color: #0f172a;
-  letter-spacing: -.02em;
-  font-size: 1.02rem;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.spinner-sub{
-  font-size: .88rem;
-  color: #64748b;
-  display:flex;
-  align-items:center;
-  gap: 10px;
-}
-.spinner-pill{
-  display:inline-flex;
-  align-items:center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(15,23,42,.10);
-  background: rgba(15,23,42,.04);
-  font-weight: 900;
-  color: #334155;
-}
-.spinner-dot{
-  width:8px; height:8px; border-radius: 999px;
-  background: var(--c1);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--c1) 55%, transparent);
-}
-
-/* presets de cor */
-.spinner-ibs  { --c1: var(--ibs);  --c2: color-mix(in srgb, var(--ibs) 60%, #38bdf8); }
-.spinner-cbs  { --c1: var(--cbs);  --c2: color-mix(in srgb, var(--cbs) 60%, #4ade80); }
-.spinner-cred { --c1: var(--cred); --c2: color-mix(in srgb, var(--cred) 60%, #fbbf24); }
-.spinner-total{ --c1: var(--total);--c2: color-mix(in srgb, var(--total) 60%, #a855f7); }
-
-/* ===== ANIMAÇÕES do Uiverse (NAWSOME) ===== */
-@keyframes ringA{
-  from,4%{stroke-dasharray:0 660;stroke-width:20;stroke-dashoffset:-330}
-  12%{stroke-dasharray:60 600;stroke-width:30;stroke-dashoffset:-335}
-  32%{stroke-dasharray:60 600;stroke-width:30;stroke-dashoffset:-595}
-  40%,54%{stroke-dasharray:0 660;stroke-width:20;stroke-dashoffset:-660}
-  62%{stroke-dasharray:60 600;stroke-width:30;stroke-dashoffset:-665}
-  82%{stroke-dasharray:60 600;stroke-width:30;stroke-dashoffset:-925}
-  90%,to{stroke-dasharray:0 660;stroke-width:20;stroke-dashoffset:-990}
-}
-@keyframes ringB{
-  from,12%{stroke-dasharray:0 220;stroke-width:20;stroke-dashoffset:-110}
-  20%{stroke-dasharray:20 200;stroke-width:30;stroke-dashoffset:-115}
-  40%{stroke-dasharray:20 200;stroke-width:30;stroke-dashoffset:-195}
-  48%,62%{stroke-dasharray:0 220;stroke-width:20;stroke-dashoffset:-220}
-  70%{stroke-dasharray:20 200;stroke-width:30;stroke-dashoffset:-225}
-  90%{stroke-dasharray:20 200;stroke-width:30;stroke-dashoffset:-305}
-  98%,to{stroke-dasharray:0 220;stroke-width:20;stroke-dashoffset:-330}
-}
-@keyframes ringC{
-  from{stroke-dasharray:0 440;stroke-width:20;stroke-dashoffset:0}
-  8%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-5}
-  28%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-175}
-  36%,58%{stroke-dasharray:0 440;stroke-width:20;stroke-dashoffset:-220}
-  66%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-225}
-  86%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-395}
-  94%,to{stroke-dasharray:0 440;stroke-width:20;stroke-dashoffset:-440}
-}
-@keyframes ringD{
-  from,8%{stroke-dasharray:0 440;stroke-width:20;stroke-dashoffset:0}
-  16%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-5}
-  36%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-175}
-  44%,50%{stroke-dasharray:0 440;stroke-width:20;stroke-dashoffset:-220}
-  58%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-225}
-  78%{stroke-dasharray:40 400;stroke-width:30;stroke-dashoffset:-395}
-  86%,to{stroke-dasharray:0 440;stroke-width:20;stroke-dashoffset:-440}
-}
-
-
-/* ===== UIVERSE UPLOADER (mantém seu tema/cores) ===== */
-
-/* “container” do uploader */
-.uiverse-uploader section[data-testid="stFileUploaderDropzone"]{
-  height: 300px !important;
-  border-radius: 14px !important;
-  box-shadow: 4px 4px 30px rgba(0,0,0,.20) !important;
-  padding: 12px !important;
-  gap: 8px !important;
-  background: rgba(37,99,235,.06) !important;
-  border: 1px solid rgba(255,255,255,.10) !important;
-  position: relative !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-}
-
-/* “header” (área tracejada) */
-.uiverse-uploader section[data-testid="stFileUploaderDropzone"] > div{
-  flex: 1 !important;
-  width: 100% !important;
-  border: 2px dashed rgba(59,130,246,.55) !important;
-  border-radius: 12px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-direction: column !important;
-  background: rgba(255,255,255,.04) !important;
-  padding: 14px !important;
-}
-
-/* Esconde o ícone padrão do Streamlit */
-.uiverse-uploader section[data-testid="stFileUploaderDropzone"] svg{
-  display:none !important;
-}
-
-/* Ícone novo (cloud upload) */
-.uiverse-uploader section[data-testid="stFileUploaderDropzone"] > div::before{
-  content:"";
-  width: 92px;
-  height: 92px;
-  display:block;
-  margin-bottom: 10px;
-  background-repeat:no-repeat;
-  background-size:contain;
-  filter: drop-shadow(0 10px 24px rgba(37,99,235,.25));
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25'/><polyline points='16 16 12 12 8 16'/><line x1='12' y1='12' x2='12' y2='21'/></svg>");
-}
-
-/* Texto do dropzone */
-.uiverse-uploader section[data-testid="stFileUploaderDropzone"] *{
-  text-align:center !important;
-}
-
-/* “footer” (barra inferior + botão) */
-.uiverse-uploader section[data-testid="stFileUploaderDropzone"] button{
-  width: 100% !important;
-  height: 42px !important;
-  margin-top: 10px !important;
-  border-radius: 12px !important;
-  background: rgba(37,99,235,.10) !important;
-  border: 1px solid rgba(59,130,246,.28) !important;
-  color: rgba(226,232,240,.92) !important;
-  font-weight: 900 !important;
-  box-shadow: 0 2px 30px rgba(0,0,0,.18) !important;
-}
-
-.uiverse-uploader section[data-testid="stFileUploaderDropzone"] button:hover{
-  filter: brightness(1.06) !important;
-  transform: translateY(-1px) !important;
-}
-
-/* Mantém seu estilo escuro da sidebar */
-section[data-testid="stSidebar"] .uiverse-uploader section[data-testid="stFileUploaderDropzone"]{
-  background: rgba(255,255,255,.06) !important;
-}
-
-
-/* ===== FILE UPLOADER DA SIDEBAR – UIVERSE STYLE ===== */
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] {
-  height: 300px !important;
-  border-radius: 14px !important;
-  box-shadow: 4px 4px 30px rgba(0,0,0,.20) !important;
-  padding: 12px !important;
-  background: rgba(37,99,235,.06) !important;
-  border: 1px solid rgba(255,255,255,.10) !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-}
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div {
-  flex: 1 !important;
-  width: 100% !important;
-  border: 2px dashed rgba(59,130,246,.55) !important;
-  border-radius: 12px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-direction: column !important;
-  background: rgba(255,255,255,.04) !important;
-}
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] svg {
-  display: none !important;
-}
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div::before {
-  content: "";
-  width: 92px;
-  height: 92px;
-  margin-bottom: 10px;
-  background-repeat: no-repeat;
-  background-size: contain;
-  filter: drop-shadow(0 10px 24px rgba(37,99,235,.25));
-  background-image: url("data:image/svg+xml;utf8,\
-<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>\
-<path d='M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25'/>\
-<polyline points='16 16 12 12 8 16'/>\
-<line x1='12' y1='12' x2='12' y2='21'/>\
-</svg>");
-}
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] * {
-  text-align: center !important;
-}
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] button {
-  width: 100% !important;
-  height: 42px !important;
-  border-radius: 12px !important;
-  background: rgba(37,99,235,.10) !important;
-  border: 1px solid rgba(59,130,246,.28) !important;
-  font-weight: 900 !important;
-}
-
-
-/* ===== UPLOADER SIDEBAR – INTERATIVO (UX PREMIUM) ===== */
-
-/* Mais compacto */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"]{
-  height: 180px !important;
-  padding: 10px !important;
-  border-radius: 16px !important;
-  transition: background .22s ease, border-color .22s ease, box-shadow .22s ease, transform .22s ease;
-}
-
-/* Área tracejada */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"] > div{
-  padding: 10px !important;
-  border-radius: 14px !important;
-}
-
-/* Esconde ícone padrão */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"] svg{
-  display: none !important;
-}
-
-/* Ícone cloud (tamanho + transição) */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"] > div::before{
-  width: 44px !important;
-  height: 44px !important;
-  margin-bottom: 6px !important;
-  transition: transform .22s ease, filter .22s ease, opacity .22s ease;
-  transform: translateY(0) scale(1);
-  opacity: .92;
-  filter: drop-shadow(0 6px 14px rgba(37,99,235,.22));
-}
-
-/* Hover: “chama” o usuário */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"]:hover{
-  background: rgba(37,99,235,.10) !important;
-  border-color: rgba(59,130,246,.55) !important;
-  box-shadow: 0 18px 45px rgba(2,6,23,.18), 0 0 0 1px rgba(59,130,246,.20), 0 0 22px rgba(59,130,246,.20) !important;
-  transform: translateY(-1px);
-}
-
-/* Ícone: pulse no hover */
-@keyframes uploadPulse {
-  0%   { transform: translateY(0) scale(1); }
-  50%  { transform: translateY(-2px) scale(1.08); }
-  100% { transform: translateY(0) scale(1); }
-}
-
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"]:hover > div::before{
-  animation: uploadPulse .9s ease-in-out infinite;
-  opacity: 1;
-  filter: drop-shadow(0 10px 22px rgba(37,99,235,.34));
-}
-
-/* Clique: feedback */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"]:active > div::before{
-  animation: none !important;
-  transform: translateY(1px) scale(.96) !important;
-  filter: drop-shadow(0 4px 10px rgba(37,99,235,.25)) !important;
-}
-
-/* Texto mais compacto */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"] p,
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"] small,
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"] span{
-  font-size: .82rem !important;
-  line-height: 1.15 !important;
-  margin: 2px 0 !important;
-  text-align: center !important;
-}
-
-/* Botão compacto */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"] button{
-  height: 34px !important;
-  padding: 6px 10px !important;
-  font-size: .88rem !important;
-  border-radius: 12px !important;
-}
-
-/* Quando já tem arquivo: troca ícone para check verde */
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"]:has([data-testid="stFileUploaderFile"]){
-  border-color: rgba(34,197,94,.55) !important;
-  box-shadow: 0 18px 45px rgba(2,6,23,.18), 0 0 0 1px rgba(34,197,94,.18), 0 0 22px rgba(34,197,94,.18) !important;
-}
-
-section[data-testid="stSidebar"]
-section[data-testid="stFileUploaderDropzone"]:has([data-testid="stFileUploaderFile"]) > div::before{
-  animation: none !important;
-  background-image: url("data:image/svg+xml;utf8,\
-<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>\
-<polyline points='20 6 9 17 4 12'/>\
-</svg>") !important;
-  opacity: 1 !important;
-  filter: drop-shadow(0 10px 22px rgba(34,197,94,.40)) !important;
-}
-
-
-/* ===== DOC TABLE PREMIUM (igual print) ===== */
-.doc-table-wrap{
-  background: rgba(255,255,255,.92);
-  border: 1px solid rgba(15,23,42,.10);
-  border-radius: 18px;
-  box-shadow: 0 18px 45px rgba(2,6,23,.10);
-  padding: 14px;
-  overflow: hidden;
-}
-
-.doc-table{
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.doc-table thead th{
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  font-weight: 900;
-  color: rgba(100,116,139,.92);
-  background: rgba(248,250,252,.95);
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(15,23,42,.10);
-  text-align: left;
-}
-
-.doc-table tbody td{
-  font-size: 12px;
-  color: rgba(15,23,42,.92);
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(15,23,42,.07);
-  vertical-align: middle;
-}
-
-.doc-table tbody tr:hover td{
-  background: rgba(37,99,235,.04);
-}
-
-.doc-table .col-item{
-  font-weight: 900;
-  color: #0f172a;
-}
-
-.doc-table .col-money{
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.doc-table .col-vibs{
-  text-align: right;
-  color: #2563eb;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-
-.doc-table .col-vcbs{
-  text-align: right;
-  color: #16a34a;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-
-.doc-table .col-file{
-  max-width: 260px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: rgba(71,85,105,.95);
-}
-
-.cclass-badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  font-size: 10.5px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-weight: 900;
-  color: rgba(30,64,175,.95);
-  background: rgba(37,99,235,.10);
-  border: 1px solid rgba(37,99,235,.18);
-}
-
-.doc-table-foot{
-  margin-top: 10px;
-  font-size: .80rem;
-  color: rgba(100,116,139,.95);
-}
-
-
-/* ===== DOC TABLE: ALTURA FIXA + SCROLL (não estica a página) ===== */
-.doc-table-wrap{
-  max-height: 520px !important;
-  overflow: auto !important;
-}
-
-/* mantém cabeçalho “grudado” ao rolar */
-.doc-table thead th{
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 2 !important;
-}
-
-/* Item/Serviço menos “grosso” */
-.doc-table .col-item{
-  font-weight: 800 !important;
-}
-
-/* scrollbar elegante */
-.doc-table-wrap::-webkit-scrollbar{ width: 10px; height: 10px; }
-.doc-table-wrap::-webkit-scrollbar-thumb{
-  background: rgba(15,23,42,.14);
-  border-radius: 999px;
-}
-.doc-table-wrap::-webkit-scrollbar-track{
-  background: rgba(15,23,42,.05);
-  border-radius: 999px;
-}
-
-
-/* ===== AJUSTES FINOS (data sem quebrar + espaço botão + chip arquivo bonito) ===== */
-
-/* Data e Número: não quebrar */
-.doc-table .col-date,
-.doc-table .col-num{
-  white-space: nowrap !important;
-  font-variant-numeric: tabular-nums !important;
-}
-
-/* Também garante nas células, caso classe não esteja aplicada */
-.doc-table tbody td.col-date,
-.doc-table tbody td.col-num{
-  white-space: nowrap !important;
-}
-
-/* Espaço pro botão “Baixar CSV filtrado” não encostar na tabela */
-.table-download-spacer{
-  height: 14px;
-}
-
-/* Chip do arquivo carregado (sidebar) – versão bonita compacta */
-section[data-testid="stSidebar"] [data-testid="stFileUploaderFile"]{
-  background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06)) !important;
-  border: 1px solid rgba(255,255,255,.14) !important;
-  border-radius: 12px !important;
-  padding: 6px 10px !important;
-  margin-top: 8px !important;
-  box-shadow:
-    0 12px 28px rgba(0,0,0,.22),
-    0 0 0 1px rgba(37,99,235,.10) !important;
-  backdrop-filter: blur(10px) !important;
-}
-
-section[data-testid="stSidebar"] [data-testid="stFileUploaderFile"] *{
-  color: rgba(226,232,240,.92) !important;
-  line-height: 1.15 !important;
-}
-
-section[data-testid="stSidebar"] [data-testid="stFileUploaderFile"] svg{
-  width: 16px !important;
-  height: 16px !important;
-  color: rgba(59,130,246,.95) !important;
-  fill: rgba(59,130,246,.95) !important;
-  filter: drop-shadow(0 8px 18px rgba(59,130,246,.18));
-}
-
-section[data-testid="stSidebar"] [data-testid="stFileUploaderFile"] button{
-  border-radius: 8px !important;
-  border: 1px solid rgba(255,255,255,.16) !important;
-  background: rgba(255,255,255,.08) !important;
-  padding: 3px 6px !important;
-}
-
-section[data-testid="stSidebar"] [data-testid="stFileUploaderFile"] button:hover{
-  filter: brightness(1.12) !important;
-  background: rgba(255,255,255,.12) !important;
-}
-
-
-/* ===== HARDEN UI (ocultar tudo que for chrome do Streamlit) ===== */
-header[data-testid="stHeader"]{display:none !important;}
-div[data-testid="stToolbar"]{display:none !important;}
-div[data-testid="stDecoration"]{display:none !important;}
-#MainMenu{display:none !important;}
-footer{display:none !important;}
-div[data-testid="stDeployButton"]{display:none !important;}
-button[title="View fullscreen"], button[title="Exit fullscreen"]{display:none !important;}
-/* alguns builds usam esses wrappers */
-div[class*="stAppToolbar"], div[class*="stToolbar"]{display:none !important;}
-
-/* remove espaço superior deixado pelo header */
-.stApp .block-container{padding-top: 1rem !important;}
-
-/* Streamlit Cloud/Share/Manage: remove qualquer widget FIXO no canto inferior direito */
-div[style*="position: fixed"][style*="bottom"][style*="right"]{display:none !important;}
-div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !important;}
-
-/* Remover qualquer overlay de “status”/toast do Streamlit */
-div[data-testid="stToast"]{display:none !important;}
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r) + 6px);
+  padding: 18px 18px;
+  background: rgba(17,24,39,.55);
+  box-shadow: var(--shadow);
+  transition: all .25s ease;
+  display:flex; align-items:flex-start; justify-content:space-between;
+  position:relative; overflow:hidden;
+}
+.kpi:hover{ transform: translateY(-2px); box-shadow: var(--shadow2); }
+.kpi:before{ content:""; position:absolute; right:-28px; top:-28px; width:120px; height:120px; border-radius:999px; background: rgba(59,130,246,.10); opacity:0; transition: opacity .25s ease; }
+.kpi:hover:before{ opacity:1; }
+.kpi h4{ margin:0; color: var(--muted); font-size:12px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+.kpi .num{ margin-top:10px; font-size:28px; font-weight:950; color: var(--text); letter-spacing:-.02em; }
+.kpi .sub{ margin-top:6px; color: var(--muted); font-size:12.5px; font-weight:650; }
+.kpi .dot{ width:44px; height:44px; border-radius: 14px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:900; }
+.kpi.neutral .dot{ background: var(--grad-hero); box-shadow: 0 0 40px rgba(59,130,246,.22); }
+.kpi.success .dot{ background: var(--grad-success); box-shadow: 0 0 40px rgba(16,185,129,.22); }
+.kpi.warn .dot{ background: var(--grad-warning); box-shadow: 0 0 40px rgba(245,158,11,.20); }
+.kpi.danger .dot{ background: var(--grad-danger); box-shadow: 0 0 40px rgba(239,68,68,.20); }
+
+/* Radio tabs spacing */
+div[role="radiogroup"]{ gap: 16px; }
 
 </style>
-"""
-
-st.markdown(CSS, unsafe_allow_html=True)
-
-# -----------------------------
-# Spinner overlay (4 cores)
-# -----------------------------
-spinner_placeholder = st.empty()
-
-def spinner_html(tipo: str, titulo: str, subtitulo: str, speed: str = "2s") -> str:
-    # Remove *qualquer* indentação para evitar o Markdown transformar em bloco de código
-    raw = dedent(f"""<div class="spinner-overlay">
-<div class="spinner-card spinner-{tipo}" style="--speed:{speed}">
-<svg class="pl" viewBox="0 0 240 240" aria-hidden="true">
-<circle class="pl__ring pl__ring--a" cx="120" cy="120" r="105" fill="none" stroke-width="20"/>
-<circle class="pl__ring pl__ring--b" cx="120" cy="120" r="35"  fill="none" stroke-width="20"/>
-<circle class="pl__ring pl__ring--c" cx="120" cy="120" r="70"  fill="none" stroke-width="20"/>
-<circle class="pl__ring pl__ring--d" cx="120" cy="120" r="105" fill="none" stroke-width="20"/>
-</svg>
-<div class="spinner-texts">
-<div class="spinner-title">{titulo}</div>
-<div class="spinner-sub">
-<span class="spinner-pill"><span class="spinner-dot"></span>{subtitulo}</span>
-</div>
-</div>
-</div>
-</div>""")
-    return "\n".join(line.lstrip() for line in raw.splitlines() if line.strip())
-
-def show_spinner(tipo: str, titulo: str, subtitulo: str, speed: str = "2s") -> None:
-    spinner_placeholder.markdown(spinner_html(tipo, titulo, subtitulo, speed), unsafe_allow_html=True)
-
-def hide_spinner() -> None:
-    spinner_placeholder.empty()
-
-
-# Spinner overlay (neon) – usado durante upload/processamento
-spinner_placeholder = st.empty()
-SPINNER_HTML = dedent("""
-<div class="spinner-overlay">
-  <div class="spinner-wrapper">
-    <div class="spinner"></div>
-    <div class="spinner1"></div>
-  </div>
-</div>
-""")
+""", unsafe_allow_html=True)
 
 
 # -----------------------------
-# XML helpers
+# Utils
 # -----------------------------
-def _local(tag: str) -> str:
-    # "{ns}Tag" -> "Tag"
-    return tag.split("}", 1)[-1] if "}" in tag else tag
+def norm_txt(s):
+    if s is None:
+        return ""
+    s = str(s).lower().strip()
+    repl = str.maketrans("áàâãäéèêëíìîïóòôõöúùûüçñ", "aaaaaeeeeiiiiooooouuuucn")
+    s = s.translate(repl)
+    for ch in ["\n", "\t", " ", ".", ",", ";", ":", "-", "_", "/", "\\", "(", ")", "[", "]", "{", "}", "%", "º"]:
+        s = s.replace(ch, " ")
+    return " ".join(s.split())
 
-def _find_text(elem: ET.Element, path: str) -> str | None:
-    x = elem.find(path)
-    if x is None or x.text is None:
-        return None
-    return x.text.strip()
+def to_float(x):
+    """Converte valores numéricos preservando casas decimais.
 
-def _parse_date(root: ET.Element) -> date | None:
+    - XML (NF-e/NFC-e) normalmente vem com decimal em ponto: 43.00
+    - Excel/BR pode vir como: 1.234,56 ou 43,00
+    - Não remove '.' cegamente (isso quebrava o XML e virava 4300).
     """
-    Tenta pegar data de emissão:
-      - NFe/infNFe/ide/dhEmi (ISO datetime) ou dEmi (YYYY-MM-DD)
+    if pd.isna(x):
+        return np.nan
+    if isinstance(x, (int, float, np.number)):
+        return float(x)
+
+    s = str(x).strip()
+    if not s:
+        return np.nan
+
+    # remove símbolos comuns
+    s = s.replace("R$", "").replace("\u00a0", " ").strip()
+    s = s.replace(" ", "")
+
+    if "," in s and "." in s:
+        # assume formato BR "1.234,56"
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s and "." not in s:
+        # "123,45"
+        s = s.replace(",", ".")
+
+        # "43.00" (XML) ou "4300"
+        pass
+
+    try:
+        return float(s)
+    except:
+        return np.nan
+
+
+def to_date(x):
+    if pd.isna(x):
+        return pd.NaT
+    if isinstance(x, (datetime, pd.Timestamp)):
+        return pd.to_datetime(x).date()
+    s = str(x).strip()
+    if not s:
+        return pd.NaT
+    try:
+        return dtparser.parse(s, dayfirst=True).date()
+    except:
+        return pd.NaT
+
+def round2(x):
+    if pd.isna(x):
+        return np.nan
+    return float(np.round(x, 2))
+
+def detect_centavos(df, cols):
     """
-    for p in [
-        ".//{*}infNFe/{*}ide/{*}dhEmi",
-        ".//{*}infNFe/{*}ide/{*}dEmi",
-        ".//{*}ide/{*}dhEmi",
-        ".//{*}ide/{*}dEmi",
-    ]:
-        t = _find_text(root, p)
-        if not t:
-            continue
-        try:
-            # dhEmi pode ser "2026-01-08T10:22:33-03:00"
-            if "T" in t:
-                # remove timezone para parse mais simples
-                base = t.split("T")[0]
-                return datetime.fromisoformat(base).date() if len(base) > 10 else datetime.fromisoformat(t[:19]).date()
-            return datetime.fromisoformat(t).date()
-        except Exception:
+    Heurística para ADM/FLEX:
+    Se a mediana é "grande" e quase tudo é inteiro, assume que está em centavos.
+    """
+    for c in cols:
+        if c in df.columns:
+            s = df[c].dropna()
+            if not s.empty:
+                try:
+                    arr = s.astype(float)
+                    med = float(np.nanmedian(arr))
+                    if med > 1000 and ((arr % 1) == 0).mean() > 0.9:
+                        df[c] = df[c] / 100
+                except:
+                    pass
+    return df
+
+def excel_download(df_dict):
+    """Gera Excel 'premium' (dashboard + tabela estilizada + filtros + congela painéis)."""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter", datetime_format="yyyy-mm-dd") as writer:
+        workbook = writer.book
+
+        # =========================
+        # Formatos
+        # =========================
+        fmt_title = workbook.add_format({
+            "bold": True, "font_size": 16, "font_color": "#1F4E79"
+        })
+        fmt_sub = workbook.add_format({
+            "bold": True, "font_size": 11, "font_color": "#1F4E79"
+        })
+        fmt_kpi = workbook.add_format({
+            "bold": True, "font_size": 14, "align": "center", "valign": "vcenter",
+            "bg_color": "#E8F1FB", "border": 1
+        })
+        fmt_kpi_lbl = workbook.add_format({
+            "bold": True, "align": "center", "valign": "vcenter",
+            "bg_color": "#F3F6FB", "border": 1
+        })
+
+        fmt_header = workbook.add_format({
+            "bold": True, "font_color": "white", "bg_color": "#1F4E79",
+            "align": "center", "valign": "vcenter", "border": 1
+        })
+        fmt_text = workbook.add_format({"valign": "vcenter"})
+        fmt_wrap = workbook.add_format({"valign": "vcenter", "text_wrap": True})
+        fmt_num = workbook.add_format({"num_format": "#,##0.00", "valign": "vcenter"})
+        fmt_int = workbook.add_format({"num_format": "0", "valign": "vcenter"})
+        fmt_date = workbook.add_format({"num_format": "yyyy-mm-dd", "valign": "vcenter"})
+
+        fmt_ok = workbook.add_format({"font_color": "#006100", "bg_color": "#C6EFCE"})
+        fmt_warn = workbook.add_format({"font_color": "#9C5700", "bg_color": "#FFEB9C"})
+        fmt_bad = workbook.add_format({"font_color": "#9C0006", "bg_color": "#FFC7CE"})
+        fmt_div = workbook.add_format({"font_color": "#7F3F00", "bg_color": "#FCE4D6"})
+
+        zebra = workbook.add_format({"bg_color": "#F7F7F7"})
+
+        # =========================
+        # Dashboard (Resumo)
+        # =========================
+        resumo_name = "RESUMO"
+        ws = workbook.add_worksheet(resumo_name)
+        writer.sheets[resumo_name] = ws
+
+        ws.set_default_row(18)
+        ws.set_column(0, 0, 3)
+        ws.set_column(1, 1, 40)
+        ws.set_column(2, 6, 18)
+
+        ws.write(0, 1, "Auditoria NFC-e — Resumo", fmt_title)
+        ws.write(2, 1, "KPIs", fmt_sub)
+
+        def safe_len(df):
             try:
-                return datetime.strptime(t[:10], "%Y-%m-%d").date()
+                return int(len(df))
+            except:
+                return 0
+
+        sefaz_n = safe_len(df_dict.get("SEFAZ", pd.DataFrame()))
+        adm_n = safe_len(df_dict.get("ADM", pd.DataFrame()))
+        flex_n = safe_len(df_dict.get("FLEX", pd.DataFrame()))
+        alerts_df = df_dict.get("ALERTAS", pd.DataFrame())
+        alerts_n = safe_len(alerts_df)
+
+        # KPI cards
+        kpis = [("Notas SEFAZ", sefaz_n), ("Notas ADM", adm_n), ("Notas FLEX", flex_n), ("Alertas", alerts_n)]
+        row = 4
+        col = 1
+        for i, (lbl, val) in enumerate(kpis):
+            ws.write(row, col + i, lbl, fmt_kpi_lbl)
+            ws.write(row + 1, col + i, val, fmt_kpi)
+
+        # Quebras por motivo / status
+        ws.write(7, 1, "Distribuição de Alertas", fmt_sub)
+        ws.set_column(1, 1, 45)
+        ws.set_column(2, 2, 14)
+
+        start_row = 9
+        if alerts_df is not None and not alerts_df.empty:
+            # Motivos
+            motivos = alerts_df["motivo"].fillna("SEM_MOTIVO").value_counts().head(20)
+            ws.write(start_row, 1, "Motivo (Top 20)", fmt_header)
+            ws.write(start_row, 2, "Qtde", fmt_header)
+            for r, (k, v) in enumerate(motivos.items(), start=1):
+                ws.write(start_row + r, 1, str(k), fmt_wrap)
+                ws.write(start_row + r, 2, int(v), fmt_int)
+            # Status
+            st_row = start_row
+            st_col = 4
+            ws.set_column(st_col, st_col, 22)
+            ws.set_column(st_col + 1, st_col + 1, 12)
+            ws.write(st_row, st_col, "Status ADM", fmt_header)
+            ws.write(st_row, st_col + 1, "Qtde", fmt_header)
+            for r, (k, v) in enumerate(alerts_df["status_adm"].fillna("SEM").value_counts().items(), start=1):
+                ws.write(st_row + r, st_col, str(k), fmt_text)
+                ws.write(st_row + r, st_col + 1, int(v), fmt_int)
+
+            ws.write(st_row + 6, st_col, "Status FLEX", fmt_header)
+            ws.write(st_row + 6, st_col + 1, "Qtde", fmt_header)
+            for r, (k, v) in enumerate(alerts_df["status_flex"].fillna("SEM").value_counts().items(), start=1):
+                ws.write(st_row + 6 + r, st_col, str(k), fmt_text)
+                ws.write(st_row + 6 + r, st_col + 1, int(v), fmt_int)
+
+            ws.write(start_row, 1, "Sem alertas gerados.", fmt_text)
+
+        # =========================
+        # Abas de dados (Tabela bonita)
+        # =========================
+        def apply_table(sheet, df):
+            ws = writer.sheets[sheet]
+            try:
+                nrows, ncols = df.shape
+            except Exception:
+                nrows, ncols = 0, 0
+
+            # Evita ws.add_table() (causa OverlappingRange quando o df já foi escrito)
+            # Congela cabeçalho
+            try:
+                ws.freeze_panes(1, 0)
             except Exception:
                 pass
+
+            # Autofiltro
+            if nrows > 0 and ncols > 0:
+                try:
+                    ws.autofilter(0, 0, nrows, ncols - 1)
+                except Exception:
+                    pass
+
+            # Ajuste de colunas (amostra para performance)
+            if ncols > 0:
+                try:
+                    for i, col in enumerate(df.columns):
+                        max_len = max(len(str(col)), 8)
+                        sample = df.iloc[: min(200, nrows), i].astype(str)
+                        if len(sample) > 0:
+                            max_len = max(max_len, int(sample.map(len).max()))
+                        ws.set_column(i, i, min(max_len + 2, 45))
+                except Exception:
+                    pass
+
+
+            apply_table(sheet, df)
+
+        # Cores das abas
+        for sheet, color in [("SEFAZ", "#D9E1F2"), ("ADM", "#E2EFDA"), ("FLEX", "#FFF2CC"), ("ALERTAS", "#FCE4D6")]:
+            if sheet in writer.sheets:
+                writer.sheets[sheet].set_tab_color(color)
+
+    return output.getvalue()
+
+
+def find_col(df, ideas):
+    cols_norm = {c: norm_txt(c) for c in df.columns}
+    for want in ideas:
+        w = norm_txt(want)
+        for c, cn in cols_norm.items():
+            if w and w in cn:
+                return c
     return None
 
-def _parse_nnf(root: ET.Element) -> str | None:
-    # Número da NF: ide/nNF
-    for p in [".//{*}infNFe/{*}ide/{*}nNF", ".//{*}ide/{*}nNF"]:
-        t = _find_text(root, p)
-        if t:
-            return t
-    return None
+def safe_get_col(df, ideas, required=True, default=np.nan):
+    col = find_col(df, ideas)
+    if col is None:
+        if required:
+            raise KeyError(
+                f"Não encontrei coluna parecida com {ideas}. "
+                f"Colunas disponíveis: {list(df.columns)}"
+            )
 
-def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
+            return pd.Series([default] * len(df), index=df.index)
+    return df[col]
+
+def normalize_key(x):
     """
-    Extrai itens (det) e IBS/CBS:
-      - Item/Serviço: det/prod/xProd
-      - cClassTrib: imposto/IBSCBS/cClassTrib
-      - Base (vBC): imposto/IBSCBS/vBC
-      - vIBS / vCBS: imposto/IBSCBS/vIBS, vCBS (se existirem)
+    Normaliza série/número para bater entre Excel e XML:
+    - remove .0 (quando vem como float)
+    - mantém só dígitos
+    - remove zeros à esquerda (000123 -> 123)
     """
+    if pd.isna(x):
+        return ""
+    s = str(x).strip()
+
+    if re.fullmatch(r"\d+\.0+", s):
+        s = s.split(".")[0]
+
     try:
-        root = ET.fromstring(xml_bytes)
-    except Exception:
-        return []
+        if isinstance(x, (float, np.floating)) and float(x).is_integer():
+            s = str(int(x))
+    except:
+        pass
 
-    emissao = _parse_date(root)
-    nnf = _parse_nnf(root)
+    dig = re.sub(r"\D+", "", s)
+    if dig == "":
+        return s
 
-    rows: list[dict] = []
-    dets = root.findall(".//{*}infNFe/{*}det") or root.findall(".//{*}det")
-    for det in dets:
-        xprod = _find_text(det, ".//{*}prod/{*}xProd") or ""
-        ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
-        if ibscbs is None:
-            # alguns XML podem não ter IBSCBS -> ignora item
+    dig2 = dig.lstrip("0")
+    return dig2 if dig2 != "" else "0"
+
+def looks_like_bad_header(cols):
+    cols = list(cols)
+    if len(cols) == 0:
+        return True
+    if sum(str(c).lower().startswith("unnamed") for c in cols) >= max(1, int(len(cols) * 0.6)):
+        return True
+    if len(cols) >= 3 and all(str(c).strip() == "" for c in cols):
+        return True
+    if len(cols) == 1 and len(str(cols[0])) > 25:
+        return True
+    if sum(isinstance(c, (int, float, datetime, pd.Timestamp, np.number)) for c in cols) >= max(1, int(len(cols) * 0.6)):
+        return True
+    return False
+
+def smart_read_excel(uploaded_file):
+    df1 = pd.read_excel(uploaded_file, sheet_name=0)
+    if not looks_like_bad_header(df1.columns):
+        return df1
+
+    df0 = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+
+    expected = [
+        "data", "data venda", "data movto", "emissao", "dt emissao", "data emissao",
+        "serie", "série", "numero", "número", "vlr", "vlr total", "vlr. total",
+        "valor", "total", "base", "base icms", "icms", "cfop", "aliquota", "alíquota"
+    ]
+    expected = [norm_txt(x) for x in expected]
+
+    best_i = None
+    best_score = -1
+    max_rows = min(60, len(df0))
+
+    for i in range(max_rows):
+        row = df0.iloc[i].tolist()
+        row_norm = [norm_txt(x) for x in row]
+        score = 0
+        for cell in row_norm:
+            for e in expected:
+                if e and e in cell:
+                    score += 1
+        has_data = any("data" in c for c in row_norm)
+        has_key = any(("serie" in c) or ("numero" in c) or ("nnf" in c) or ("n nf" in c) for c in row_norm)
+        if has_data and has_key:
+            score += 3
+        if score > best_score:
+            best_score = score
+            best_i = i
+
+    if best_i is None or best_score < 2:
+        df0.columns = [f"col_{i}" for i in range(df0.shape[1])]
+        return df0
+
+    header = df0.iloc[best_i].tolist()
+    header = [str(h).strip() if not pd.isna(h) else "" for h in header]
+    header = [h if h else f"col_{idx}" for idx, h in enumerate(header)]
+
+    df = df0.iloc[best_i + 1:].copy()
+    df.columns = header
+    df = df.reset_index(drop=True)
+    df = df.dropna(how="all")
+    return df
+
+# -----------------------------
+# XML SEFAZ
+# -----------------------------
+def parse_xml(xml_bytes: bytes, filename: str | None = None):
+    root = etree.fromstring(xml_bytes)
+
+    def xtext(node, xpath):
+        el = node.xpath(xpath)
+        if not el:
+            return None
+        return el[0].text if hasattr(el[0], "text") else str(el[0])
+
+    infNFe = root.xpath("//*[local-name()='infNFe']")
+    if not infNFe:
+        return None
+    infNFe = infNFe[0]
+
+    ide_nodes = infNFe.xpath(".//*[local-name()='ide']")
+    if not ide_nodes:
+        return None
+    ide = ide_nodes[0]
+
+    serie = xtext(ide, ".//*[local-name()='serie']")
+    numero = xtext(ide, ".//*[local-name()='nNF']")
+    dhEmi = xtext(ide, ".//*[local-name()='dhEmi']") or xtext(ide, ".//*[local-name()='dEmi']")
+    data = to_date(dhEmi)
+
+    total = infNFe.xpath(".//*[local-name()='ICMSTot']")
+    vNF = vBC = vICMS = None
+    if total:
+        total = total[0]
+        vNF = to_float(xtext(total, ".//*[local-name()='vNF']"))
+        vBC = to_float(xtext(total, ".//*[local-name()='vBC']"))
+        vICMS = to_float(xtext(total, ".//*[local-name()='vICMS']"))
+
+    # SEFAZ (XML) já vem em reais -> NÃO divide por 100 aqui
+
+    # Regra: arquivos XML cujo nome começa com '11' são NFC-e canceladas (padrão informado)
+    cancelada = False
+    if filename:
+        base_name = os.path.basename(str(filename))
+        cancelada = base_name.startswith('11')
+
+    return {
+        "data": data,
+        "serie": normalize_key(serie),
+        "numero": normalize_key(numero),
+        "valor": round2(vNF),
+        "base": round2(vBC),
+        "icms": round2(vICMS),
+        "fonte": "SEFAZ",
+        "cancelada": cancelada,
+    }
+
+def load_sefaz_from_upload(uploaded):
+    rows = []
+
+    def add_xml_bytes(b, fname=None):
+        r = parse_xml(b, filename=fname)
+        if r:
+            rows.append(r)
+
+    for f in uploaded:
+        name = (f.name or "").lower()
+        content = f.getvalue()
+
+        if name.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(BytesIO(content), "r") as z:
+                    for n in z.namelist():
+                        if n.lower().endswith(".xml"):
+                            add_xml_bytes(z.read(n), fname=n)
+            except:
+                pass
+        elif name.endswith(".xml"):
+            add_xml_bytes(content, fname=f.name)
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    df["serie"] = df["serie"].astype(str).map(normalize_key)
+    df["numero"] = df["numero"].astype(str).map(normalize_key)
+    return df
+
+# -----------------------------
+# Standardizers
+# -----------------------------
+def standardize_adm(df):
+    out = pd.DataFrame()
+
+    out["data"] = safe_get_col(df, ["data venda", "data movto", "data"], required=True).apply(to_date)
+
+    serie_col = find_col(df, ["serie", "série"])
+    if serie_col:
+        out["serie"] = df[serie_col].map(normalize_key)
+
+        out["serie"] = "1"
+
+    out["numero"] = safe_get_col(df, ["numero", "número", "nnf", "n nf"], required=True).map(normalize_key)
+
+    out["valor"] = safe_get_col(df, ["vlr total", "vlr. total", "valor", "total", "vlt total"], required=True).apply(to_float)
+
+    # opcionais (ADM normalmente não tem)
+    out["base"] = safe_get_col(df, ["base", "vbc", "base icms"], required=False, default=np.nan).apply(to_float)
+    out["icms"] = safe_get_col(df, ["icms", "vicms"], required=False, default=np.nan).apply(to_float)
+    # Fiscal ADM vem em centavos -> converte para reais
+    for c in ["valor", "base", "icms"]:
+        out[c] = out[c] / 100
+    for c in ["valor", "base", "icms"]:
+        out[c] = out[c].apply(round2)
+
+    out["fonte"] = "ADM"
+    return out
+
+def standardize_flex(df):
+    out = pd.DataFrame()
+
+    out["data"] = safe_get_col(df, ["data", "emissao", "dt emissao", "data emissao"], required=True).apply(to_date)
+
+    serie_col = find_col(df, ["serie", "série"])
+    if serie_col:
+        out["serie"] = df[serie_col].map(normalize_key)
+
+        out["serie"] = "1"
+
+    out["numero"] = safe_get_col(df, ["numero", "número", "nfce", "nota", "nnf", "n nf"], required=True).map(normalize_key)
+
+    out["valor"] = safe_get_col(df, ["valor", "total", "liquido", "líquido"], required=True).apply(to_float)
+    out["base"]  = safe_get_col(df, ["base icms", "base", "vbc"], required=False, default=np.nan).apply(to_float)
+    out["icms"]  = safe_get_col(df, ["icms", "vicms"], required=False, default=np.nan).apply(to_float)
+
+    # FLEX pode vir em centavos
+    out = detect_centavos(out, ["valor", "base", "icms"])
+    for c in ["valor", "base", "icms"]:
+        out[c] = out[c].apply(round2)
+
+    grp = out.groupby(["data", "serie", "numero"], as_index=False)[["valor", "base", "icms"]].sum()
+    grp["fonte"] = "FLEX"
+    return grp
+
+# -----------------------------
+# Auditoria
+# -----------------------------
+def audit(sefaz, adm, flex):
+    '''
+    Auditoria focada em VALORES (ignora DATA como chave principal).
+
+    Match principal: Série + Número
+    - Se existir em ADM/FLEX com a mesma Série+Número, considera a nota "existente"
+    - Se houver múltiplas linhas com a mesma Série+Número (datas diferentes), escolhe a melhor
+      comparando os valores com SEFAZ (menor diferença), e marca status MULTIPLO.
+
+    Alertas:
+    - NAO_ENCONTRADO (não existe por Série+Número)
+    - Divergência de VALOR / BASE / ICMS (quando existe)
+    '''
+    if sefaz.empty:
+        return pd.DataFrame(columns=[
+            "data","serie","numero",
+            "status_adm","status_flex","motivo",
+            "valor_sefaz","base_sefaz","icms_sefaz",
+            "data_adm","serie_adm","valor_adm","base_adm","icms_adm",
+            "data_flex","serie_flex","valor_flex","base_flex","icms_flex",
+        ])
+
+    k_key = ["serie", "numero"]
+
+    # agrupa por Série+Número
+    def build_group(df):
+        if df.empty:
+            return {}
+        return { k: sub for k, sub in df.groupby(k_key) }
+
+    adm_g  = build_group(adm)
+    flex_g = build_group(flex)
+
+    alerts = []
+
+    def cmp(a, b):
+        if pd.isna(a) and pd.isna(b):
+            return True
+        return np.isclose(a, b, atol=0.01, equal_nan=True)
+
+    def pick_best(sub, r_sefaz):
+        """Escolhe a linha mais provável quando há duplicidade (datas diferentes)."""
+        if sub is None or len(sub) == 0:
+            return None, "NAO_ENCONTRADO"
+        if len(sub) == 1:
+            return sub.iloc[0], "OK"
+
+        # Score por proximidade dos valores (prioriza VALOR)
+        def score(row):
+            s = 0.0
+            # valor sempre pesa mais
+            if pd.notna(r_sefaz.get("valor", np.nan)) and pd.notna(row.get("valor", np.nan)):
+                s += abs(float(r_sefaz["valor"]) - float(row["valor"])) * 100
+            # base/icms se existirem
+            if pd.notna(r_sefaz.get("base", np.nan)) and pd.notna(row.get("base", np.nan)):
+                s += abs(float(r_sefaz["base"]) - float(row["base"]))
+            if pd.notna(r_sefaz.get("icms", np.nan)) and pd.notna(row.get("icms", np.nan)):
+                s += abs(float(r_sefaz["icms"]) - float(row["icms"]))
+            # bônus se data bate (não é chave, mas ajuda a escolher)
+            if str(row.get("data", "")) == str(r_sefaz.get("data", "")):
+                s -= 0.5
+            return s
+
+        best_idx = sub.apply(score, axis=1).astype(float).idxmin()
+        return sub.loc[best_idx], "MULTIPLO"
+
+    def add_alert(r_sefaz, status_adm, status_flex, motivo, r_adm=None, r_flex=None):
+        alerts.append({
+            "data": r_sefaz.get("data", np.nan),
+            "serie": r_sefaz.get("serie", np.nan),
+            "numero": r_sefaz.get("numero", np.nan),
+
+            "status_adm": status_adm,
+            "status_flex": status_flex,
+            "motivo": motivo,
+
+            "valor_sefaz": r_sefaz.get("valor", np.nan),
+            "base_sefaz": r_sefaz.get("base", np.nan),
+            "icms_sefaz": r_sefaz.get("icms", np.nan),
+
+            "data_adm":  (r_adm.get("data", np.nan)  if r_adm is not None else np.nan),
+            "serie_adm": (r_adm.get("serie", np.nan) if r_adm is not None else np.nan),
+            "valor_adm": (r_adm.get("valor", np.nan) if r_adm is not None else np.nan),
+            "base_adm":  (r_adm.get("base", np.nan)  if r_adm is not None else np.nan),
+            "icms_adm":  (r_adm.get("icms", np.nan)  if r_adm is not None else np.nan),
+
+            "data_flex":  (r_flex.get("data", np.nan)  if r_flex is not None else np.nan),
+            "serie_flex": (r_flex.get("serie", np.nan) if r_flex is not None else np.nan),
+            "valor_flex": (r_flex.get("valor", np.nan) if r_flex is not None else np.nan),
+            "base_flex":  (r_flex.get("base", np.nan)  if r_flex is not None else np.nan),
+            "icms_flex":  (r_flex.get("icms", np.nan)  if r_flex is not None else np.nan),
+        })
+
+    for _, r in sefaz.iterrows():
+        key = (r["serie"], r["numero"])
+
+        adm_sub  = adm_g.get(key)
+        flex_sub = flex_g.get(key)
+
+        r_adm, st_adm = pick_best(adm_sub, r)
+        r_flex, st_flex = pick_best(flex_sub, r)
+
+        # Existência
+        status_adm = "SEM_ARQUIVO" if adm.empty else st_adm
+        status_flex = "SEM_ARQUIVO" if flex.empty else st_flex
+
+        if status_adm in ["SEM_ARQUIVO", "NAO_ENCONTRADO"] or status_flex in ["SEM_ARQUIVO", "NAO_ENCONTRADO"]:
+            motivos = []
+            if status_adm == "SEM_ARQUIVO":
+                motivos.append("ADM não carregou")
+            elif status_adm == "NAO_ENCONTRADO":
+                motivos.append("Nota NÃO encontrada no ADM (Série+Número)")
+            elif status_adm == "MULTIPLO":
+                motivos.append("ADM: múltiplas linhas (datas diferentes)")
+
+            if status_flex == "SEM_ARQUIVO":
+                motivos.append("FLEX não carregou")
+            elif status_flex == "NAO_ENCONTRADO":
+                motivos.append("Nota NÃO encontrada no FLEX (Série+Número)")
+            elif status_flex == "MULTIPLO":
+                motivos.append("FLEX: múltiplas linhas (datas diferentes)")
+
+            add_alert(r, status_adm, status_flex, " | ".join(motivos), r_adm=r_adm, r_flex=r_flex)
             continue
 
-        cclass = _find_text(ibscbs, ".//{*}cClassTrib") or ""
-        vbc = _find_text(ibscbs, ".//{*}vBC")
-        vibs = _find_text(ibscbs, ".//{*}vIBS")
-        vcbs = _find_text(ibscbs, ".//{*}vCBS")
+        # Agora: existe. Se MULTIPLO, avisa mas continua comparando valores
+        if status_adm == "MULTIPLO" or status_flex == "MULTIPLO":
+            motivos = []
+            if status_adm == "MULTIPLO":
+                motivos.append("ADM: múltiplas linhas (escolhida a mais próxima por valores)")
+            if status_flex == "MULTIPLO":
+                motivos.append("FLEX: múltiplas linhas (escolhida a mais próxima por valores)")
+            add_alert(r, status_adm, status_flex, " | ".join(motivos), r_adm=r_adm, r_flex=r_flex)
 
-        def _to_float(x: str | None):
-            try:
-                return float(x) if x not in (None, "") else None
-            except Exception:
-                return None
+        # Divergência VALOR
+        if r_adm is not None and not cmp(r.get("valor", np.nan), r_adm.get("valor", np.nan)):
+            add_alert(r, status_adm, status_flex, "Divergência de VALOR (ADM)", r_adm=r_adm, r_flex=r_flex)
 
-        vbc_f = _to_float(vbc)
-        vibs_f = _to_float(vibs)
-        vcbs_f = _to_float(vcbs)
+        if r_flex is not None and not cmp(r.get("valor", np.nan), r_flex.get("valor", np.nan)):
+            add_alert(r, status_adm, status_flex, "Divergência de VALOR (FLEX)", r_adm=r_adm, r_flex=r_flex)
 
-        # Fonte do valor (base)
-        fonte = "IBSCBS/vBC" if vbc_f is not None else ""
+        # Divergência BASE/ICMS (só se existir dos dois lados)
+        if r_adm is not None and pd.notna(r_adm.get("base", np.nan)) and pd.notna(r.get("base", np.nan)):
+            if not cmp(r["base"], r_adm["base"]):
+                add_alert(r, status_adm, status_flex, "Divergência de BASE (ADM)", r_adm=r_adm, r_flex=r_flex)
 
-        rows.append(
-            {
-                "Data": emissao,
-                "Numero": nnf,
-                "Item/Serviço": xprod,
-                "cClassTrib": cclass,
-                "Valor da operação": vbc_f,
-                "vIBS": vibs_f,
-                "vCBS": vcbs_f,
-                "arquivo": filename,
-                "Fonte do valor": fonte,
-            }
+        if r_adm is not None and pd.notna(r_adm.get("icms", np.nan)) and pd.notna(r.get("icms", np.nan)):
+            if not cmp(r["icms"], r_adm["icms"]):
+                add_alert(r, status_adm, status_flex, "Divergência de ICMS (ADM)", r_adm=r_adm, r_flex=r_flex)
+
+        if r_flex is not None and pd.notna(r_flex.get("base", np.nan)) and pd.notna(r.get("base", np.nan)):
+            if not cmp(r["base"], r_flex["base"]):
+                add_alert(r, status_adm, status_flex, "Divergência de BASE (FLEX)", r_adm=r_adm, r_flex=r_flex)
+
+        if r_flex is not None and pd.notna(r_flex.get("icms", np.nan)) and pd.notna(r.get("icms", np.nan)):
+            if not cmp(r["icms"], r_flex["icms"]):
+                add_alert(r, status_adm, status_flex, "Divergência de ICMS (FLEX)", r_adm=r_adm, r_flex=r_flex)
+
+    df_alerts = pd.DataFrame(alerts)
+    if not df_alerts.empty:
+        df_alerts = df_alerts.drop_duplicates().sort_values(["serie","numero","motivo"])
+    return df_alerts
+
+
+
+def build_full_table(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> pd.DataFrame:
+    """Gera uma tabela 'completa' (todas as notas do SEFAZ) com status ADM/FLEX e motivo.
+
+    - Base: universo SEFAZ
+    - Merge ADM/FLEX por (serie, numero)
+    - Motivo padrão: 'Conferido'
+    - Se a nota aparecer em alerts_df, o motivo vira a concatenação dos motivos (por nota)
+    """
+    sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
+    if sef is None or sef.empty:
+        return pd.DataFrame()
+
+    # garante colunas básicas
+    for c in ["data","serie","numero","valor","base","icms"]:
+        if c not in sef.columns:
+            sef[c] = np.nan
+
+    # renomeia colunas SEFAZ para não conflitar
+    out = sef.rename(columns={
+        "valor": "valor_sefaz",
+        "base": "base_sefaz",
+        "icms": "icms_sefaz",
+        "data": "data_sefaz",
+    }).copy()
+
+    # ADM
+    adm = adm_df.copy() if isinstance(adm_df, pd.DataFrame) else pd.DataFrame()
+    if adm is not None and not adm.empty and {"serie","numero"}.issubset(adm.columns):
+        adm2 = adm.rename(columns={
+            "valor": "valor_adm",
+            "base": "base_adm",
+            "icms": "icms_adm",
+            "data": "data_adm",
+        })
+        # garante tipos iguais para merge
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        adm2[["serie","numero"]] = adm2[["serie","numero"]].astype(str)
+        out = out.merge(
+            adm2[["serie","numero","data_adm","valor_adm","base_adm","icms_adm"]],
+            on=["serie","numero"],
+            how="left",
         )
+    else:
+        out["data_adm"] = np.nan
+        out["valor_adm"] = np.nan
+        out["base_adm"] = np.nan
+        out["icms_adm"] = np.nan
 
-    return rows
+    # FLEX
+    flex = flex_df.copy() if isinstance(flex_df, pd.DataFrame) else pd.DataFrame()
+    if flex is not None and not flex.empty and {"serie","numero"}.issubset(flex.columns):
+        flex2 = flex.rename(columns={
+            "valor": "valor_flex",
+            "base": "base_flex",
+            "icms": "icms_flex",
+            "data": "data_flex",
+        })
+        # garante tipos iguais para merge
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        flex2[["serie","numero"]] = flex2[["serie","numero"]].astype(str)
+        out = out.merge(
+            flex2[["serie","numero","data_flex","valor_flex","base_flex","icms_flex"]],
+            on=["serie","numero"],
+            how="left",
+        )
+    else:
+        out["data_flex"] = np.nan
+        out["valor_flex"] = np.nan
+        out["base_flex"] = np.nan
+        out["icms_flex"] = np.nan
+    # status: OK se achou linha, NAO_ENCONTRADO caso contrário
+    out["status_adm"] = np.where(out["valor_adm"].notna(), "OK", "NAO_ENCONTRADO")
+    out["status_flex"] = np.where(out["valor_flex"].notna(), "OK", "NAO_ENCONTRADO")
 
-# -----------------------------
-# Excel write helper
-# -----------------------------
-def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
-    """
-    Abre o template e grava df na aba LANCAMENTOS, acrescentando linhas.
+    # motivo padrão
+    out["motivo"] = "Conferido"
 
-    ✅ O que este writer garante:
-      - Encontra a linha correta de cabeçalhos mesmo que o layout mude (ex.: cabeçalho na linha 2).
-      - Escreve nos campos de entrada (Data, Numero, Item/Serviço, etc.).
-      - COPIA fórmulas/estilos da primeira linha-modelo de dados para todas as novas linhas,
-        para que "Base", "Valor IBS/CBS", validações e cálculos voltem a aparecer no Excel.
-    """
-    from copy import copy
-    bio = io.BytesIO(template_bytes)
-    wb = load_workbook(bio)
+    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
+    if al is not None and not al.empty and {"serie","numero","motivo"}.issubset(al.columns):
+        g = (al[["serie","numero","motivo","status_adm","status_flex"]]
+             .copy())
+        # agrega motivos por nota
+        motivos = (g.groupby(["serie","numero"])["motivo"]
+                   .apply(lambda s: " | ".join(pd.unique(s.astype(str))))
+                   .reset_index(name="motivo_alerta"))
+        out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+        motivos[["serie","numero"]] = motivos[["serie","numero"]].astype(str)
+        out = out.merge(motivos, on=["serie","numero"], how="left")
+        out["motivo"] = np.where(out["motivo_alerta"].notna(), out["motivo_alerta"], out["motivo"])
+        out = out.drop(columns=["motivo_alerta"])
 
-    ws = wb["LANCAMENTOS"] if "LANCAMENTOS" in wb.sheetnames else wb.active
+        # se alertas trouxerem status mais específicos, usa-os
+        if "status_adm" in g.columns:
+            st_adm = (g.groupby(["serie","numero"])["status_adm"]
+                      .apply(lambda s: pd.unique(s.astype(str))[-1])
+                      .reset_index(name="_status_adm"))
+            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+            st_adm[["serie","numero"]] = st_adm[["serie","numero"]].astype(str)
+            out = out.merge(st_adm, on=["serie","numero"], how="left")
+            out["status_adm"] = np.where(out["_status_adm"].notna(), out["_status_adm"], out["status_adm"])
+            out = out.drop(columns=["_status_adm"])
+        if "status_flex" in g.columns:
+            st_fx = (g.groupby(["serie","numero"])["status_flex"]
+                     .apply(lambda s: pd.unique(s.astype(str))[-1])
+                     .reset_index(name="_status_flex"))
+            out[["serie","numero"]] = out[["serie","numero"]].astype(str)
+            st_fx[["serie","numero"]] = st_fx[["serie","numero"]].astype(str)
+            out = out.merge(st_fx, on=["serie","numero"], how="left")
+            out["status_flex"] = np.where(out["_status_flex"].notna(), out["_status_flex"], out["status_flex"])
+            out = out.drop(columns=["_status_flex"])
 
-    # ------------------------------------------------------------
-    # 1) Descobre em qual linha estão os cabeçalhos (layout pode mudar)
-    # ------------------------------------------------------------
-    expected = {"Data", "Numero", "Item/Serviço", "cClassTrib", "Valor da operação"}
-    header_row = None
-
-    # procura nos primeiros 25 rows (suficiente pro seu layout)
-    for r in range(1, 26):
-        values = []
-        for c in range(1, 101):  # lê até 100 colunas (bem além do necessário)
-            v = ws.cell(row=r, column=c).value
-            if isinstance(v, str):
-                values.append(v.strip())
-        hit = len(expected.intersection(values))
-        if hit >= 3:  # achou linha com a maioria dos cabeçalhos
-            header_row = r
-            break
-
-    if header_row is None:
-        # fallback antigo (assume linha 1)
-        header_row = 1
-
-    # mapeia "nome do cabeçalho" -> coluna
-    headers: dict[str, int] = {}
-    last_col = 0
-    for col in range(1, 201):  # até 200 colunas
-        v = ws.cell(row=header_row, column=col).value
-        if isinstance(v, str) and v.strip():
-            headers[v.strip()] = col
-            last_col = max(last_col, col)
-
-    # se ainda não achou nada (planilha muito custom), tenta usar as colunas usadas do sheet
-    if last_col == 0:
-        last_col = min(ws.max_column, 200)
-
-    # ------------------------------------------------------------
-    # 2) Define a "linha modelo" (a primeira linha de dados com fórmulas)
-    #    No seu modelo: header_row=2, a linha 3 é seção, a 4 é a linha modelo.
-    # ------------------------------------------------------------
-    template_row = header_row + 2
-
-    # ------------------------------------------------------------
-    # 3) Descobre a próxima linha vazia olhando a coluna "Data"
-    # ------------------------------------------------------------
-    next_row = ws.max_row + 1
-    if "Data" in headers:
-        c = headers["Data"]
-        r = ws.max_row
-        while r >= (template_row) and ws.cell(row=r, column=c).value in (None, ""):
-            r -= 1
-        next_row = max(r + 1, template_row)
-
-    # ------------------------------------------------------------
-    # 4) Função para copiar estilo + fórmulas da linha modelo
-    # ------------------------------------------------------------
-    def _copy_row_style_and_formulas(src_row: int, dst_row: int):
-        from copy import copy
-        from openpyxl.formula.translate import Translator
-
-        for col in range(1, last_col + 1):
-            src = ws.cell(row=src_row, column=col)
-            dst = ws.cell(row=dst_row, column=col)
-
-            # estilos
-            dst.font = copy(src.font)
-            dst.fill = copy(src.fill)
-            dst.border = copy(src.border)
-            dst.alignment = copy(src.alignment)
-            dst.number_format = src.number_format
-            dst.protection = copy(src.protection)
-
-            # valor / fórmula
-            if isinstance(src.value, str) and src.value.startswith("="):
-                # traduz a referência da linha-modelo -> linha destino (ex.: G4 vira G7)
-                try:
-                    dst.value = Translator(src.value, origin=src.coordinate).translate_formula(dst.coordinate)
-                except Exception:
-                    dst.value = src.value
-            else:
-                dst.value = src.value
-
-
-    # ------------------------------------------------------------
-    # 5) Escreve as linhas: primeiro replica modelo, depois grava os valores de entrada
-    # ------------------------------------------------------------
-    fields = [
-        "Data", "Numero", "Item/Serviço", "cClassTrib",
-        "Valor da operação", "vIBS", "vCBS", "arquivo", "Fonte do valor"
-    ]
-
-    for _, row in df.iterrows():
-        # replica a linha modelo (fórmulas + visual)
-        _copy_row_style_and_formulas(template_row, next_row)
-
-        # agora sobrescreve somente os campos de ENTRADA
-        for f in fields:
-            if f not in headers:
-                continue
-            col = headers[f]
-            val = row.get(f, None)
-
-            cell = ws.cell(row=next_row, column=col)
-
-            # datas
-            if f == "Data" and pd.notna(val) and isinstance(val, date):
-                cell.value = val
-                cell.number_format = "dd/mm/yyyy"
-            else:
-                if pd.isna(val):
-                    val = None
-                cell.value = val
-
-        next_row += 1
-
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue()
+    return out
 
 # -----------------------------
 # UI
-# -----------------------------
-st.markdown(dedent("""
-<div class="topbar">
-  <div class="brand">
-<div class="brand-badge" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M8 12h8M8 16h8" stroke="#1f2937" stroke-width="1.7" stroke-linecap="round"/>
-      </svg>
-</div>
-<div>
-      <h1>Extrator XML - IBS/CBS</h1>
-<div class="sub">Visualização de dados fiscais da reforma tributária</div>
-</div>
-  </div>
 
-  <div class="status-pill">
-<span class="status-dot"></span>
-    Pronto para análise
-  </div>
-</div>
-"""), unsafe_allow_html=True)
 
-# Sidebar: uploads
-with st.sidebar:
-    st.markdown(dedent("""
-<div style="padding: 10px 6px 6px 6px;">
-  <div style="display:flex; align-items:center; gap:10px; margin-bottom: 10px;">
-<div style="width:42px;height:42px;border-radius:14px;background:rgba(108,124,255,.18);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;">
-<span style="font-weight:900;">✦</span>
-</div>
-<div>
-<div style="font-weight:900; font-size: 1.05rem; line-height:1;">Extrator XML</div>
-<div style="font-size:.82rem; color: rgba(226,232,240,.75); margin-top:2px;">IBS/CBS</div>
-</div>
-<div style="margin-left:auto; font-size:.75rem; font-weight:800; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.10); color: rgba(226,232,240,.9);">v2.0</div>
-  </div>
 
-  <div class="sidebar-card">
-<div class="sidebar-title">
-<h4>EXCEL IBS/CBS</h4>
-<span class="tag">FIXA</span>
-</div>
 
-<div class="uploader-box">
-<div style="text-align:center; font-weight:800; margin-bottom: 6px;">Planilha interna</div>
-<div style="text-align:center; color: rgba(226,232,240,.75); font-size:.82rem;">O app usa <b>planilha_modelo.xlsx</b></div>
-</div>
-
-<div style="height: 14px;"></div>
-
-<div class="sidebar-title" style="margin-top: 2px;">
-
-<h4>ARQUIVOS XML</h4>
-<span class="tag" style="background:rgba(37,99,235,.18); border-color: rgba(37,99,235,.22);">OBRIGATÓRIO</span>
-</div>
-
-<div class="uploader-box">
-"""), unsafe_allow_html=True)
-
-    st.markdown('<div class="uiverse-uploader">', unsafe_allow_html=True)
-    xml_files = st.file_uploader("XML(s)", type=["xml", "zip"], accept_multiple_files=True, label_visibility="collapsed")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(dedent("""
-<div class="uploader-help">XML, ZIP • Múltiplos</div>
-</div>
-
-<div style="height: 14px;"></div>
-
-<div style="padding: 12px; border-radius: 16px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.10);">
-<div style="font-weight:900; margin-bottom: 4px;">Dica rápida</div>
-<div style="font-size: .82rem; color: rgba(226,232,240,.78);">
-        Envie XMLs para extrair automaticamente dados de IBS e CBS da reforma tributária.
-</div>
-</div>
-  </div>
-</div>
-"""), unsafe_allow_html=True)
-
-# Carrega planilha modelo FIXA (arquivo na pasta do projeto)
-from pathlib import Path
-TEMPLATE_PATH = Path(__file__).parent / "planilha_modelo.xlsx"
-
-try:
-    template_bytes = TEMPLATE_PATH.read_bytes()
-except FileNotFoundError:
-    template_bytes = None
-
-# Aviso amigável caso o arquivo não exista (em produção ele deve estar junto do app)
-if template_bytes is None:
-    st.markdown(dedent("""
-<div class="tip">
-  <div class="tip-icon" aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 8v5" stroke="#b45309" stroke-width="1.8" stroke-linecap="round"/>
-      <path d="M12 16h.01" stroke="#b45309" stroke-width="2.8" stroke-linecap="round"/>
-      <path d="M10.3 3.7a2 2 0 0 1 3.4 0l8.4 14.7A2 2 0 0 1 20.4 21H3.6a2 2 0 0 1-1.7-3.0l8.4-14.3z"
-            stroke="#b45309" stroke-width="1.6" fill="#fff7ed"/>
-    </svg>
-  </div>
-  <div>
-    <div class="tip-title">Planilha modelo não encontrada</div>
-    <div class="tip-text">Coloque o arquivo <b>planilha_modelo.xlsx</b> na mesma pasta do <b>app.py</b>.</div>
-  </div>
-</div>
-"""), unsafe_allow_html=True)
-
-# Parse XMLs
-rows_all: list[dict] = []
-errors: list[str] = []
-
-if xml_files:
-    # Mostra spinner enquanto processa uploads (XML/ZIP)
-    spinner_placeholder.markdown(SPINNER_HTML, unsafe_allow_html=True)
-
-    for f in xml_files:
-        try:
-            b = f.read()
-            if f.name.lower().endswith(".zip"):
-                with zipfile.ZipFile(io.BytesIO(b)) as z:
-                    xml_names = [n for n in z.namelist() if n.lower().endswith(".xml")]
-                    if not xml_names:
-                        errors.append(f"{f.name}: zip sem .xml")
-                        continue
-                    for xn in xml_names:
-                        xb = z.read(xn)
-                        rows = _parse_items_from_xml(xb, f"{f.name}:{xn}")
-                        if not rows:
-                            errors.append(f"{f.name}:{xn}: não encontrei itens com IBSCBS")
-                        rows_all.extend(rows)
-            else:
-                rows = _parse_items_from_xml(b, f.name)
-                if not rows:
-                    errors.append(f"{f.name}: não encontrei itens com IBSCBS")
-                rows_all.extend(rows)
-        except Exception as e:
-            errors.append(f"{f.name}: erro ao ler ({e})")
-
-    # Remove spinner ao terminar
-    spinner_placeholder.empty()
-
-df = pd.DataFrame(rows_all)
-
-# Normaliza Data
-if not df.empty:
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.date
-
-# ---------- KPIs ----------
-def money(x):
-    if x is None or (isinstance(x, float) and pd.isna(x)):
-        return "R$ 0,00"
-    try:
-        return "R$ {:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
-    except Exception:
-        return "R$ 0,00"
-
-def pct(x):
-    try:
-        return f"{float(x):.1f}%"
-    except Exception:
-        return ""
-
-
-def _fmt_money_br(x):
-    try:
-        if x is None or (isinstance(x, float) and pd.isna(x)):
-            return "0,00"
-        return "{:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
-    except Exception:
-        return "0,00"
-
-def _h(x):
-    # escape for safe HTML rendering (keeps text)
-    try:
-        return html.escape("" if x is None else str(x))
-    except Exception:
-        return ""
-
-def _clean_html(s: str) -> str:
-    # Remove indentation that can turn HTML into a markdown code block
-    return "\n".join(line.lstrip() for line in s.splitlines() if line.strip())
-
-def _render_doc_table(df: pd.DataFrame, total_items: int | None = None):
-    """
-    Renderiza tabela premium (HTML) no estilo do print.
-    """
-    if df is None or df.empty:
-        st.info("Nenhum item para exibir.")
-        return
-
-    total = total_items if total_items is not None else len(df)
-
-    rows = []
-    for _, r in df.iterrows():
-        data = _h(r.get("Data", ""))
-        numero = _h(r.get("Numero", ""))
-        item = _h(r.get("Item/Serviço", ""))
-        cclass = _h(r.get("cClassTrib", ""))
-        valor = _fmt_money_br(r.get("Valor da operação", 0))
-        vibs = _fmt_money_br(r.get("vIBS", 0))
-        vcbs = _fmt_money_br(r.get("vCBS", 0))
-        arquivo = _h(r.get("arquivo", ""))
-
-        rows.append(f"""
-<tr>
-  <td class="col-date">{data}</td>
-  <td class="col-num">{numero}</td>
-  <td class="col-item">{item}</td>
-  <td class="col-cclass"><span class="cclass-badge">{cclass}</span></td>
-  <td class="col-money">{valor}</td>
-  <td class="col-vibs">{vibs}</td>
-  <td class="col-vcbs">{vcbs}</td>
-  <td class="col-file" title="{arquivo}">{arquivo}</td>
-</tr>
-""")
-
-    html_block = f"""
-<div class="doc-table-wrap">
-  <table class="doc-table">
-    <thead>
-      <tr>
-        <th>DATA</th>
-        <th>NÚMERO</th>
-        <th>ITEM/SERVIÇO</th>
-        <th>cClassTrib</th>
-        <th>VALOR DA OPERAÇÃO</th>
-        <th>vIBS</th>
-        <th>vCBS</th>
-        <th>ARQUIVO</th>
-      </tr>
-    </thead>
-    <tbody>
-      {''.join(rows)}
-    </tbody>
-  </table>
-  <div class="doc-table-foot">Mostrando {len(df)} de {total} itens</div>
-</div>
-"""
-    st.markdown(_clean_html(html_block), unsafe_allow_html=True)
-
-
-# --- Totais (Somatório das bases do XML) ---
-# Aqui os painéis mostram apenas a SOMA DAS BASES encontradas no XML (sem aplicar alíquota).
-# As alíquotas exibidas são apenas informativas (fictícias), como você pediu.
-ALIQUOTA_IBS_TEXTO = "0,10%"
-ALIQUOTA_CBS_TEXTO = "0,90%"
-
-base_ibs = float(df["Valor da operação"].fillna(0).sum()) if (not df.empty and "Valor da operação" in df.columns) else 0.0
-base_cbs = float(df["Valor da operação"].fillna(0).sum()) if (not df.empty and "Valor da operação" in df.columns) else 0.0
-
-# Totais exibidos nos cards = soma das bases
-ibs_total = round(base_ibs, 2)
-cbs_total = round(base_cbs, 2)
-total_tributos = round(base_ibs + base_cbs, 2)
-
-# Créditos: 1% sobre UMA base (IBS ou CBS)
-creditos_total = round(base_ibs * 0.01, 2)
-
-
-# --- KPI clique (filtro via query param) ---
-try:
-    _qp = st.query_params.get("kpi", "all")
-    # Streamlit pode devolver lista/tuple dependendo da versão
-    if isinstance(_qp, (list, tuple)):
-        selected_kpi = _qp[0] if _qp else "all"
-    else:
-        selected_kpi = _qp or "all"
-except Exception:
-    selected_kpi = "all"
-
-selected_kpi = str(selected_kpi).lower().strip()
-if selected_kpi not in ("all", "ibs", "cbs", "cred", "total"):
-    selected_kpi = "all"
-
-
-st.markdown(
-    f"""
-<div class="kpi-grid">
-  <a class="kpi-link" href="?kpi=ibs">
-    <div class="kpi kpi-ibs {'is-active' if selected_kpi=='ibs' else ''}">
-      <div class="kpi-head">
-        <div>
-          <div class="label">IBS Total</div>
-          <div class="pill">↗ Alíquota {ALIQUOTA_IBS_TEXTO}</div>
-        </div>
-        <div class="kpi-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path d="M7 17V7" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
-            <path d="M7 17h10" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
-            <path d="M9 13l3-3 3 2 2-3" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-      </div>
-      <div class="value">{money(ibs_total)}</div>
-      <div class="sub">Soma das bases IBS (XML)</div>
-    </div>
-  </a>
-
-  <a class="kpi-link" href="?kpi=cbs">
-    <div class="kpi kpi-cbs {'is-active' if selected_kpi=='cbs' else ''}">
-      <div class="kpi-head">
-        <div>
-          <div class="label">CBS Total</div>
-          <div class="pill">↗ Alíquota {ALIQUOTA_CBS_TEXTO}</div>
-        </div>
-        <div class="kpi-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path d="M8 7h8M8 12h8M8 17h8" stroke="#16a34a" stroke-width="2" stroke-linecap="round"/>
-            <path d="M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" stroke="#16a34a" stroke-width="2"/>
-          </svg>
-        </div>
-      </div>
-      <div class="value">{money(cbs_total)}</div>
-      <div class="sub">Soma das bases CBS (XML)</div>
-    </div>
-  </a>
-
-  <a class="kpi-link" href="?kpi=cred">
-    <div class="kpi kpi-cred {'is-active' if selected_kpi=='cred' else ''}">
-      <div class="kpi-head">
-        <div>
-          <div class="label">Créditos</div>
-          <div class="pill">↗ IBS + CBS</div>
-        </div>
-        <div class="kpi-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path d="M7 12h10" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
-            <path d="M12 7v10" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
-            <path d="M6 6h12v12H6z" stroke="#f59e0b" stroke-width="2" opacity=".6"/>
-          </svg>
-        </div>
-      </div>
-      <div class="value">{money(creditos_total)}</div>
-      <div class="sub">Somatório de vIBS + vCBS</div>
-    </div>
-  </a>
-
-  <a class="kpi-link" href="?kpi=total">
-    <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}">
-      <div class="kpi-head">
-        <div>
-          <div class="label">Total Tributos</div>
-          <div class="pill">↗ Consolidado</div>
-        </div>
-        <div class="kpi-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path d="M7 8h10M7 12h10M7 16h10" stroke="#a855f7" stroke-width="2" stroke-linecap="round"/>
-            <path d="M9 3h6v3H9z" stroke="#a855f7" stroke-width="2"/>
-            <path d="M6 6h12v15H6z" stroke="#a855f7" stroke-width="2" opacity=".6"/>
-          </svg>
-        </div>
-      </div>
-      <div class="value">{money(total_tributos)}</div>
-      <div class="sub">IBS base + CBS base</div>
-    </div>
-  </a>
-</div>
-
-<div style="margin-top:10px;">
-  <a class="kpi-link" href="?kpi=all"><span class="pill">Limpar filtro</span></a>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-# Painéis (estilo Figma) — Débitos vs Créditos
-c1, c2 = st.columns(2, gap="large")
-ibs_deb = float(ibs_total or 0.0)
-cbs_deb = float(cbs_total or 0.0)
-ibs_cred = 0.0
-cbs_cred = 0.0
-
-def _bar_width(val, vmax):
-    if vmax <= 0:
-        return "0%"
-    return f"{max(0.0, min(1.0, val / vmax)) * 100:.1f}%"
-
-max_ibs = max(ibs_deb, ibs_cred, 1e-9)
-max_cbs = max(cbs_deb, cbs_cred, 1e-9)
-
-with c1:
-    st.markdown(
-        f"""
-<div class="card ibs-panel">
-  <div class="panel-title">
-<div class="panel-left">
-<div class="icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M4 18V6" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M4 18h16" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M8 14l3-3 3 2 4-5" stroke="#2563eb" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-</div>
-<div>
-      <h3>IBS - Débitos vs Créditos</h3>
-<div class="hint">Imposto sobre Bens e Serviços (Estados/Municípios)</div>
-</div>
-</div>
-<span class="badge on">Ativo</span>
-  </div>
-
-  <div class="bar-row">
-<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(ibs_deb)}</span></div>
-<div class="bar-track"><div class="bar-fill ibs" style="width:{_bar_width(ibs_deb, max_ibs)}"></div></div>
-  </div>
-
-  <div class="bar-row">
-<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(ibs_cred)}</span></div>
-<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(ibs_cred, max_ibs)}"></div></div>
-  </div>
-
-  <div class="bar-foot green">
-    <strong>Saldo a Recolher</strong>
-<span class="badge-money" style="color:#2563eb;">{money(ibs_deb - ibs_cred)}</span>
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-with c2:
-    st.markdown(
-        f"""
-<div class="card cbs-panel">
-  <div class="panel-title">
-<div class="panel-left">
-<div class="icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M4 18V6" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M4 18h16" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M8 14l3-3 3 2 4-5" stroke="#16a34a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-</div>
-<div>
-      <h3>CBS - Débitos vs Créditos</h3>
-<div class="hint">Contribuição sobre Bens e Serviços (União)</div>
-</div>
-</div>
-<span class="badge on" style="background:#ecfdf3;border-color:#dcfce7;color:#166534;">Ativo</span>
-  </div>
-
-  <div class="bar-row">
-<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(cbs_deb)}</span></div>
-<div class="bar-track"><div class="bar-fill cbs" style="width:{_bar_width(cbs_deb, max_cbs)}"></div></div>
-  </div>
-
-  <div class="bar-row">
-<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(cbs_cred)}</span></div>
-<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(cbs_cred, max_cbs)}"></div></div>
-  </div>
-
-  <div class="bar-foot">
-    <strong>Saldo a Recolher</strong>
-<span class="badge-money" style="color:#16a34a;">{money(cbs_deb - cbs_cred)}</span>
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-
-# Alerts
-if errors:
-    st.warning("Alguns arquivos tiveram problemas:")
-    for e in errors[:10]:
-        st.write("•", e)
-    if len(errors) > 10:
-        st.caption(f"... e mais {len(errors)-10} itens")
-
-# ---------- Filters + table ----------
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("## Itens do Documento")
-st.caption("Detalhamento dos itens extraídos do XML (inclui base vBC e valores de IBS/CBS quando presentes).")
-
-if df.empty:
-    st.info("Envie XML(s) para visualizar os itens aqui.")
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.stop()
-
-c1, c2, c3 = st.columns([1, 2, 1], gap="large")
-
-with c1:
-    min_d = df["Data"].min()
-    max_d = df["Data"].max()
-    # SEMPRE define "periodo" (evita NameError)
-    periodo = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d)
-
-with c2:
-    q = st.text_input("Buscar item", placeholder="Ex.: produto, serviço, descrição...")
-
-with c3:
-    classes = sorted([c for c in df["cClassTrib"].dropna().unique().tolist() if str(c).strip() != ""])
-    pick = st.selectbox("cClassTrib", options=["(Todos)"] + classes, index=0)
-
-df_view = df.copy()
-
-# filtro de período (robusto)
-if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
-    d1, d2 = periodo
-    df_view["Data"] = pd.to_datetime(df_view["Data"], errors="coerce").dt.date
-    df_view = df_view[(df_view["Data"] >= d1) & (df_view["Data"] <= d2)]
-
-# busca
-if q:
-    qq = q.strip().lower()
-    df_view = df_view[df_view["Item/Serviço"].fillna("").str.lower().str.contains(qq, na=False)]
-
-# cClassTrib
-if pick and pick != "(Todos)":
-    df_view = df_view[df_view["cClassTrib"].astype(str) == str(pick)]
-
-
-# filtro por KPI (clique nos cards)
-if selected_kpi != "all":
-    vibs = df_view["vIBS"].fillna(0) if "vIBS" in df_view.columns else None
-    vcbs = df_view["vCBS"].fillna(0) if "vCBS" in df_view.columns else None
-
-    if selected_kpi == "ibs" and vibs is not None:
-        df_view = df_view[vibs != 0]
-    elif selected_kpi == "cbs" and vcbs is not None:
-        df_view = df_view[vcbs != 0]
-    elif selected_kpi == "cred" and (vibs is not None and vcbs is not None):
-        # créditos normalmente aparecem como valores negativos
-        df_view = df_view[(vibs < 0) | (vcbs < 0)]
-    elif selected_kpi == "total" and (vibs is not None and vcbs is not None):
-        df_view = df_view[(vibs != 0) | (vcbs != 0)]
-
-show_cols = ["Data", "Numero", "Item/Serviço", "cClassTrib", "Valor da operação", "vIBS", "vCBS", "arquivo", "Fonte do valor"]
-show_cols = [c for c in show_cols if c in df_view.columns]
-
-# ===== TABELA PREMIUM (igual vídeo) =====
-st.markdown('<div class="table-wrap">', unsafe_allow_html=True)
-
-_render_doc_table(df_view[show_cols], total_items=len(df_view))
-st.markdown('<div class="table-download-spacer"></div>', unsafe_allow_html=True)
-st.download_button(
-    "Baixar CSV filtrado",
-    data=df_view[show_cols].to_csv(index=False).encode("utf-8"),
-    file_name="itens_filtrados.csv",
-    mime="text/csv",
-)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------- Generate planilha ----------
-st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-st.markdown("## Gerar planilha preenchida")
-
-if template_bytes is None:
-    st.error("Não encontrei **planilha_modelo.xlsx** na mesma pasta do app.py.")
-else:
-    if st.button("Gerar planilha", type="primary"):
-        try:
-            # 🔵 IBS
-            show_spinner(tipo="ibs", titulo="Processando IBS…", subtitulo="Organizando bases", speed="1.6s")
-            time.sleep(0.25)
-
-            # 🟢 CBS
-            show_spinner(tipo="cbs", titulo="Processando CBS…", subtitulo="Calculando valores", speed="1.4s")
-            time.sleep(0.25)
-
-            # 🟠 Créditos
-            show_spinner(tipo="cred", titulo="Aplicando créditos…", subtitulo="Ajustando compensações", speed="1.2s")
-            time.sleep(0.25)
-
-            # 🟣 Total / exportação
-            show_spinner(tipo="total", titulo="Gerando planilha…", subtitulo="Aplicando fórmulas e estilos", speed="1.0s")
-
-            out_bytes = _append_to_workbook(template_bytes, df_view)
-
-        except Exception as e:
-            # Garante que o overlay não esconda o erro
-            hide_spinner()
-            st.error("Erro ao gerar a planilha. Veja os detalhes abaixo:")
-            st.exception(e)
-        else:
-            hide_spinner()
-            st.success("Planilha gerada! Abra no Excel para ver as fórmulas calculando.")
-
-            st.download_button(
-                "Baixar planilha_preenchida.xlsx",
-                data=out_bytes,
-                file_name="planilha_preenchida.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+def normalize_keys(df):
+    for col in ["serie", "numero"]:
+        if col in df.columns:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(".0", "", regex=False)
+                .str.replace(",", "", regex=False)
+                .str.strip()
             )
+    return df
+
+def normalize_table(df: pd.DataFrame, fonte: str, dividir_por_100: bool=False) -> pd.DataFrame:
+    """Normaliza qualquer tabela (CSV/Excel) para o formato padrão:
+    data, serie, numero, valor, base, icms, fonte
+
+    Robusto para planilhas com cabeçalhos variados: tenta match exato (normalizado)
+    e, se não encontrar, usa heurísticas por substring (ex.: 'serie', 'num', 'valor', 'icms').
+    """
+    if df is None or len(df) == 0:
+        return pd.DataFrame(columns=["data","serie","numero","valor","base","icms","fonte"])
+
+    # mapa: nome_normalizado -> nome_original
+    cols = {norm_txt(c): c for c in df.columns}
+
+    def pick(primary, fallbacks):
+        for k in [primary] + list(fallbacks):
+            if k in cols:
+                return cols[k]
+        return None
+
+    def pick_contains(tokens, prefer_tokens=None):
+        """Retorna a primeira coluna cujo nome normalizado contém TODOS tokens.
+        prefer_tokens (opcional) prioriza colunas que contenham algum desses tokens."""
+        norm_names = list(cols.keys())
+        cand = []
+        for nn in norm_names:
+            ok = True
+            for t in tokens:
+                if t not in nn:
+                    ok = False
+                    break
+            if ok:
+                cand.append(nn)
+        if not cand:
+            return None
+        if prefer_tokens:
+            # prioriza quem contém token preferencial
+            for pt in prefer_tokens:
+                for nn in cand:
+                    if pt in nn:
+                        return cols[nn]
+        return cols[cand[0]]
+
+    # tentativas (match exato)
+    c_data = pick("data", ["dt", "data venda", "data movto", "data_movto", "dtemi", "dhemi"])
+    c_serie = pick("serie", ["série", "ser", "serie_nf", "serie nfe", "serie nfce", "serie cupom", "serie documento"])
+    c_num   = pick("numero", ["número", "num", "n nf", "nnf", "nf", "numero nf", "numero nota", "numero documento", "numero cupom", "no", "nro"])
+    c_val   = pick("valor", ["vlr total", "vltotal", "valor total", "vl tot", "vl total", "valor nota", "vnf", "v_nf", "total", "vlcont", "vltotnf"])
+    c_base  = pick("base", ["base icms", "vlbcicms", "bc icms", "vbc", "v_bc", "baseicms", "base_calculo", "base calculo"])
+    c_icms  = pick("icms", ["valor icms", "vlicms", "icms total", "vl icms", "vicms", "v_icms", "valor_do_icms"])
+
+    # heurísticas (se faltar)
+    if c_serie is None:
+        c_serie = pick_contains(["serie"])
+    if c_num is None:
+        c_num = pick_contains(["num"], prefer_tokens=["numero","nnf","nro"]) or pick_contains(["nf"], prefer_tokens=["numero","num"])
+    if c_val is None:
+        c_val = pick_contains(["valor"], prefer_tokens=["total","vl"]) or pick_contains(["total"])
+    if c_icms is None:
+        c_icms = pick_contains(["icms"], prefer_tokens=["valor","vl"])
+    if c_base is None:
+        # base costuma vir como 'base icms' / 'bc icms' / 'vbc'
+        c_base = pick_contains(["base"], prefer_tokens=["icms","bc","calculo"]) or pick_contains(["bc"], prefer_tokens=["icms"])
+
+    out = pd.DataFrame()
+    out["data"] = df[c_data].astype(str).str[:10] if c_data is not None else ""
+    out["serie"] = df[c_serie] if c_serie is not None else np.nan
+    out["numero"] = df[c_num] if c_num is not None else np.nan
+
+    def to_num(series):
+        s = series.astype(str).str.strip()
+        # remove moeda e espaços
+        s = s.str.replace("R$", "", regex=False).str.replace(" ", "", regex=False)
+        # pt-BR -> float
+        s = s.str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+        return pd.to_numeric(s, errors="coerce")
+
+    out["valor"] = to_num(df[c_val]) if c_val is not None else np.nan
+    out["base"]  = to_num(df[c_base]) if c_base is not None else np.nan
+    out["icms"]  = to_num(df[c_icms]) if c_icms is not None else np.nan
+
+    if dividir_por_100:
+        out["valor"] = out["valor"] / 100.0
+        out["base"]  = out["base"] / 100.0
+        out["icms"]  = out["icms"] / 100.0
+
+    out["fonte"] = fonte
+
+    # limpeza / tipos
+    out = out.dropna(subset=["numero"])
+    # serie pode vir vazia em algumas planilhas: tenta numérico, senão 0
+    out["serie"]  = pd.to_numeric(out["serie"], errors="coerce").fillna(0).astype(int)
+    out["numero"] = pd.to_numeric(out["numero"], errors="coerce").astype(int)
+    for c in ["valor","base","icms"]:
+        out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0.0).astype(float)
+
+    return out
+
+def read_csv_any(file_like, fonte: str = "SEFAZ", dividir_por_100: bool = False):
+    try:
+        file_like.seek(0)
+    except Exception:
+        pass
+    try:
+        df = pd.read_csv(file_like, sep=None, engine="python")
+    except Exception:
+        file_like.seek(0)
+        df = pd.read_csv(file_like)
+    return normalize_table(df, fonte=fonte, dividir_por_100=dividir_por_100)
+
+def read_sefaz_xml_file(file_like):
+    # UploadedFile pode manter ponteiro no fim após reruns; use getvalue/seek
+    try:
+        content = file_like.getvalue()
+    except Exception:
+        file_like.seek(0)
+        content = file_like.read()
+    xml = content.decode("utf-8", errors="ignore") if isinstance(content, (bytes, bytearray)) else str(content)
+    if "parse_sefaz_xml_string" in globals():
+        return parse_sefaz_xml_string(xml, filename=os.path.basename(path))
+    return pd.DataFrame(columns=["data","serie","numero","valor","base","icms","fonte","cancelada"])
+
+def read_sefaz_zip(file_like):
+    import zipfile as _zf
+    from io import BytesIO as _BytesIO
+    try:
+        data = file_like.getvalue()
+    except Exception:
+        file_like.seek(0)
+        data = file_like.read()
+    buf = _BytesIO(data)
+    rows=[]
+    with _zf.ZipFile(buf) as z:
+        for n in z.namelist():
+            if n.lower().endswith(".xml"):
+                xml = z.read(n).decode("utf-8", errors="ignore")
+                if "parse_sefaz_xml_string" in globals():
+                    df = parse_sefaz_xml_string(xml, filename=n)
+                    if not df.empty:
+                        rows.append(df)
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["data","serie","numero","valor","base","icms","fonte"])
+
+def read_excel_any(file_like, fonte, dividir_por_100=False):
+    try:
+        file_like.seek(0)
+    except Exception:
+        pass
+    df = pd.read_excel(file_like)
+    return normalize_table(df, fonte=fonte, dividir_por_100=dividir_por_100)
+
+def parse_sefaz_xml_string(xml: str, filename: str | None = None) -> pd.DataFrame:
+    """Parse de um XML da SEFAZ (texto) e retorna DataFrame normalizado."""
+    try:
+        row = parse_xml(xml.encode("utf-8"), filename=filename)
+        return pd.DataFrame([row])
+    except Exception:
+        return pd.DataFrame(columns=["data","serie","numero","valor","base","icms","fonte","cancelada"])
+def money_br(v):
+    try:
+        if pd.isna(v):
+            return "—"
+        return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return "—"
+
+def render_header():
+    st.markdown("""<div class="l-hero">
+      <div class="l-hero-left">
+        <div class="l-icon">🛡️</div>
+        <div>
+          <p class="l-title">Auditor Fiscal NFC-e</p>
+          <p class="l-sub">Conferência inteligente SEFAZ × Fiscal ADM × Fiscal Flex</p>
+        </div>
+      </div>
+      <div class="l-badge">✅ Sistema Operacional</div>
+    </div>""", unsafe_allow_html=True)
+
+def upload_block(col, title, desc, key, border_class, types):
+    colors = {"blue":"#2563eb","green":"#059669","amber":"#b45309"}
+    with col:
+        st.markdown(f"""<div class="upload-card {border_class}">
+          <div style="font-size:32px; line-height: 1;">📄</div>
+          <div class="upload-title" style="color: {colors.get(border_class,'#111827')};">{title}</div>
+          <p class="upload-desc">{desc}</p>
+        """, unsafe_allow_html=True)
+
+        up = st.file_uploader(" ", type=types, key=key, label_visibility="collapsed")
+        if up is not None:
+            st.markdown(f'<span class="small-pill ok">✅ {up.name}</span>', unsafe_allow_html=True)
+
+            st.markdown('<span class="small-pill">⬆️ Clique ou arraste o arquivo</span>', unsafe_allow_html=True)
+        st.markdown("""</div>""", unsafe_allow_html=True)
+        return up
+
+
+def calc_metrics(sefaz_df: pd.DataFrame, adm_df: pd.DataFrame, flex_df: pd.DataFrame, alerts_df: pd.DataFrame) -> dict:
+    """Calcula KPIs do painel.
+
+    IMPORTANTE:
+    - A tabela (alerts_df) só contém *problemas* (ausências/divergências/múltiplos).
+      Então "conferidas" não pode ser contada dentro dela.
+    - Todos os contadores (conferidas/divergentes/ausentes) devem ser por NOTA (série+número),
+      e não por linha, porque uma mesma nota pode gerar mais de um alerta.
+    """
+    sef = sefaz_df.copy() if isinstance(sefaz_df, pd.DataFrame) else pd.DataFrame()
+    al = alerts_df.copy() if isinstance(alerts_df, pd.DataFrame) else pd.DataFrame()
+
+    def _sum_numeric(df: pd.DataFrame, col: str) -> float:
+        if df is None or df.empty or col not in df.columns:
+            return 0.0
+        s = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        return float(s.sum())
+
+    def _key_df(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame(columns=['serie','numero'])
+        if not {'serie','numero'}.issubset(df.columns):
+            return pd.DataFrame(columns=['serie','numero'])
+        k = df[['serie','numero']].dropna().copy()
+        # normaliza tipos pra evitar mismatch 201 vs 201.0
+        k['serie'] = k['serie'].astype(str).str.replace('.0','',regex=False).str.strip()
+        k['numero'] = k['numero'].astype(str).str.replace('.0','',regex=False).str.strip()
+        return k
+
+    # Total de notas: SEMPRE vem do SEFAZ (universo)
+    keys_sefaz = _key_df(sef)
+    total_notas = int(keys_sefaz.drop_duplicates().shape[0]) if not keys_sefaz.empty else int(len(sef))
+
+    # Totais monetários: preferir SEFAZ direto (é o "universo").
+    # Se por algum motivo não existir, tenta pegar das colunas *_sefaz do df final.
+    valor_total = _sum_numeric(sef, 'valor') or _sum_numeric(al, 'valor_sefaz')
+    icms_total = _sum_numeric(sef, 'icms') or _sum_numeric(al, 'icms_sefaz')
+
+    # Se não há alertas, então tudo conferido (desde que ADM/FLEX carregados).
+    keys_alertas = _key_df(al)
+    total_problemas = int(keys_alertas.drop_duplicates().shape[0]) if not keys_alertas.empty else 0
+
+    # Divergentes (por nota)
+    divergentes = 0
+    if not al.empty and 'motivo' in al.columns and {'serie','numero'}.issubset(al.columns):
+        mask_div = al['motivo'].astype(str).str.contains('Diverg', case=False, na=False)
+        divergentes = int(_key_df(al[mask_div]).drop_duplicates().shape[0])
+
+    # Ausentes (por nota)
+    ausentes_adm = 0
+    if not al.empty and 'status_adm' in al.columns and {'serie','numero'}.issubset(al.columns):
+        mask_aus = al['status_adm'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])
+        ausentes_adm = int(_key_df(al[mask_aus]).drop_duplicates().shape[0])
+
+    ausentes_flex = 0
+    if not al.empty and 'status_flex' in al.columns and {'serie','numero'}.issubset(al.columns):
+        mask_aus = al['status_flex'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])
+        ausentes_flex = int(_key_df(al[mask_aus]).drop_duplicates().shape[0])
+
+    # Conferidas: total - notas que apareceram em QUALQUER alerta
+    conferidas = max(total_notas - total_problemas, 0)
+
+    return {
+        # chaves usadas no painel atual
+        'valor_total': float(valor_total),
+        'icms_total': float(icms_total),
+        'total_notas': int(total_notas),
+        'conferidas': int(conferidas),
+        'divergentes': int(divergentes),
+        'ausentes_adm': int(ausentes_adm),
+        'ausentes_flex': int(ausentes_flex),
+
+        # aliases (mantém compatibilidade)
+        'total_valor_sefaz': float(valor_total),
+        'total_icms_apurado': float(icms_total),
+    }
+
+
+
+def style_table(df):
+    if df is None or getattr(df, 'empty', True):
+        return df
+
+    d = df.copy()
+
+    def row_style(r):
+        motivo = str(r.get("motivo",""))
+        if "Divergência" in motivo:
+            return ["background-color: #fff1f2"] * len(r)
+        if r.get("status_adm") == "NAO_ENCONTRADO" or r.get("status_flex") == "NAO_ENCONTRADO":
+            return ["background-color: #fffbeb"] * len(r)
+        return [""] * len(r)
+
+    sty = d.style.apply(row_style, axis=1)
+
+    for col in [c for c in d.columns if str(c).startswith("status_")]:
+        sty = sty.applymap(
+            lambda v: (
+                "color:#065f46;background:#d1fae5;border-radius:999px;padding:2px 8px;display:inline-block;font-weight:800;"
+                if str(v)=="OK" else
+                "color:#7c2d12;background:#ffedd5;border-radius:999px;padding:2px 8px;display:inline-block;font-weight:800;"
+                if ("DIVERGE" in str(v) or "MULTIPLO" in str(v)) else
+                "color:#7f1d1d;background:#fee2e2;border-radius:999px;padding:2px 8px;display:inline-block;font-weight:900;"
+                if ("NAO_ENCONTRADO" in str(v) or "SEM_ARQUIVO" in str(v)) else ""
+            ),
+            subset=[col]
+        )
+    return sty
+
+render_header()
+st.write("")
+st.markdown('<div class="l-card"><h3 style="margin:0;font-weight:900;">Importar Dados</h3><p style="margin:6px 0 0 0;color:rgba(17,24,39,.6);font-size:13px;">Carregue os arquivos das três fontes para iniciar a conferência</p></div>', unsafe_allow_html=True)
+st.write("")
+
+c1, c2, c3 = st.columns(3, gap="large")
+up_sefaz = upload_block(c1, "Arquivo SEFAZ", "XML (zip), CSV ou Excel da Secretaria da Fazenda", "up_sefaz", "blue", ["xml","zip","csv","xlsx","xls"])
+up_adm   = upload_block(c2, "Fiscal ADM", "Planilha Excel do sistema Fiscal ADM", "up_adm", "green", ["xlsx","xls"])
+up_flex  = upload_block(c3, "Fiscal Flex", "Planilha Excel do sistema Fiscal Flex", "up_flex", "amber", ["xlsx","xls"])
+
+sefaz_df = pd.DataFrame()
+adm_df = pd.DataFrame()
+flex_df = pd.DataFrame()
+alerts = pd.DataFrame()
+full_df = pd.DataFrame()
+
+if up_sefaz is not None:
+    name = up_sefaz.name.lower()
+    if name.endswith(".csv"):
+        sefaz_df = read_csv_any(up_sefaz, fonte="SEFAZ", dividir_por_100=False)
+    elif name.endswith(".zip"):
+        sefaz_df = read_sefaz_zip(up_sefaz)
+    elif name.endswith(".xlsx") or name.endswith(".xls"):
+        sefaz_df = read_excel_any(up_sefaz, fonte="SEFAZ", dividir_por_100=False)
+
+        sefaz_df = read_sefaz_xml_file(up_sefaz)
+
+
+if up_adm is not None:
+    adm_df = read_excel_any(up_adm, fonte="ADM", dividir_por_100=True)
+
+if up_flex is not None:
+    flex_df = read_excel_any(up_flex, fonte="FLEX", dividir_por_100=False)
+
+if up_sefaz is not None and (sefaz_df is None or sefaz_df.empty):
+    st.warning("Arquivo SEFAZ carregado, mas não consegui identificar as colunas (preciso de Nº/Série/Valor). Se for CSV, confirme se tem colunas como numero/serie/valor/base/icms.")
+# Auditoria (ignora data, foca valores)
+if not sefaz_df.empty and "cancelada" in sefaz_df.columns:
+    sefaz_df = sefaz_df[~sefaz_df["cancelada"].fillna(False)]
+
+if not sefaz_df.empty:
+    alerts = audit(sefaz_df, adm_df, flex_df)
+    full_df = build_full_table(sefaz_df, adm_df, flex_df, alerts)
+
+st.write("")
+
+m = calc_metrics(sefaz_df, adm_df, flex_df, alerts)
+# Se a tabela completa existir, recalcula contadores (mais fiel ao filtro UI)
+if isinstance(full_df, pd.DataFrame) and not full_df.empty:
+    try:
+        m['total_notas'] = int(full_df[['serie','numero']].drop_duplicates().shape[0])
+        m['divergentes'] = int(full_df[full_df['motivo'].astype(str).str.contains('diverg', case=False, na=False)][['serie','numero']].drop_duplicates().shape[0])
+        m['ausentes_adm'] = int(full_df[full_df['status_adm'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])][['serie','numero']].drop_duplicates().shape[0])
+        m['ausentes_flex'] = int(full_df[full_df['status_flex'].astype(str).isin(['NAO_ENCONTRADO','SEM_ARQUIVO'])][['serie','numero']].drop_duplicates().shape[0])
+        m['conferidas'] = int(full_df[full_df['motivo'].astype(str).str.lower().eq('conferido')][['serie','numero']].drop_duplicates().shape[0])
+    except Exception:
+        pass
+# Fallback: se por algum motivo o DataFrame SEFAZ não ficou disponível neste ciclo,
+# calculamos os cards a partir da própria tabela de alertas (que já contém valor/base/icms da SEFAZ).
+if (m.get("total_notas", 0) == 0) and (not alerts.empty) and ("valor_sefaz" in alerts.columns):
+    sef = alerts[alerts["valor_sefaz"].notna()].copy()
+    # chaves únicas por (serie, numero) para não contar duplicado
+    if "serie" in sef.columns and "numero" in sef.columns:
+        sef["_k"] = sef["serie"].astype(str) + "-" + sef["numero"].astype(str)
+        total_notas = sef["_k"].nunique()
+
+        total_notas = len(sef)
+    valor_total = pd.to_numeric(sef["valor_sefaz"], errors="coerce").fillna(0).sum()
+    icms_total = pd.to_numeric(sef.get("icms_sefaz", 0), errors="coerce").fillna(0).sum()
+
+    # conferidas = OK nos 3
+    conferidas = 0
+    if "status_adm" in alerts.columns and "status_flex" in alerts.columns:
+        conferidas = int(((alerts["status_adm"] == "OK") & (alerts["status_flex"] == "OK") & (~alerts["motivo"].astype(str).str.contains("Diverg", case=False, na=False))).sum())
+
+    divergentes = 0
+    if "motivo" in alerts.columns:
+        divergentes = int(alerts["motivo"].astype(str).str.contains("Diverg", case=False, na=False).sum())
+
+    aus_adm = 0
+    if "status_adm" in alerts.columns:
+        aus_adm = int(alerts["status_adm"].isin(["NAO_ENCONTRADO", "SEM_ARQUIVO"]).sum())
+
+    aus_flex = 0
+    if "status_flex" in alerts.columns:
+        aus_flex = int(alerts["status_flex"].isin(["NAO_ENCONTRADO", "SEM_ARQUIVO"]).sum())
+
+    m.update({
+        "valor_total": float(valor_total),
+        "icms_total": float(icms_total),
+        "total_notas": int(total_notas),
+        "conferidas": int(conferidas),
+        "divergentes": int(divergentes),
+        "ausentes_adm": int(aus_adm),
+        "ausentes_flex": int(aus_flex),
+    })
+
+
+sum1, sum2 = st.columns(2, gap="large")
+with sum1:
+    st.markdown(f'<div class="grad bluepurp"><p class="grad-label">Valor Total SEFAZ</p><p class="grad-value">{money_br(m.get("valor_total"))}</p></div>', unsafe_allow_html=True)
+with sum2:
+    st.markdown(f'<div class="grad green"><p class="grad-label">Total ICMS Apurado</p><p class="grad-value">{money_br(m.get("icms_total"))}</p></div>', unsafe_allow_html=True)
+
+k1,k2,k3,k4,k5 = st.columns(5, gap="large")
+
+def kpi(col, title, num, sub, variant, emoji):
+    with col:
+        st.markdown(f'''
+        <div class="kpi {variant}">
+          <div>
+            <h4>{title}</h4>
+            <div class="num">{num}</div>
+            <div class="sub">{sub}</div>
+          </div>
+          <div class="dot">{emoji}</div>
+        </div>
+        ''', unsafe_allow_html=True)
+
+kpi(k1,"TOTAL DE NOTAS", m.get("total_notas", 0), "Notas analisadas", "neutral","🧾")
+kpi(k2,"CONFERIDAS", m.get("conferidas", 0), "Compatíveis", "success","✅")
+kpi(k3,"DIVERGENTES", m.get("divergentes", 0), "Valores diferentes", "danger","⛔")
+kpi(k4,"AUSENTES ADM", m.get("ausentes_adm", 0), "Faltando no ADM", "warn","⚠️")
+kpi(k5,"AUSENTES FLEX", m.get("ausentes_flex", 0), "Faltando no Flex", "warn","⚠️")
+
+st.write("")
+st.markdown('<div class="l-card"><h3 style="margin:0;font-weight:900;">Resultado da Conferência</h3><p style="margin:6px 0 0 0;color:rgba(17,24,39,.6);font-size:13px;">Clique e filtre para ver os detalhes completos</p></div>', unsafe_allow_html=True)
+st.write("")
+
+tabs = ["Todos", "Conferidos", "Divergentes", "Ausentes ADM", "Ausentes Flex"]
+counts = {"Todos": m.get("total_notas", 0), "Conferidos": m.get("conferidas", 0), "Divergentes": m.get("divergentes", 0), "Ausentes ADM": m.get("ausentes_adm", 0), "Ausentes Flex": m.get("ausentes_flex", 0)}
+choice = st.radio(" ", [f"{t}  ({counts[t]})" for t in tabs], horizontal=True, label_visibility="collapsed")
+choice_key = choice.split("  (")[0]
+
+search = st.text_input("Buscar (número, série ou motivo)", placeholder="Ex.: 15186, 201, Divergência de VALOR", label_visibility="collapsed")
+
+if sefaz_df.empty:
+    st.info("Carregue o arquivo SEFAZ para ver os resultados.")
+
+    base = (full_df.copy() if isinstance(full_df, pd.DataFrame) and not full_df.empty else alerts.copy())
+
+    if choice_key == "Divergentes":
+        base = base[base["motivo"].fillna("").str.contains("diverg", case=False)] if not base.empty else base
+    elif choice_key == "Ausentes ADM":
+        base = base[base.get("status_adm").astype(str).isin(["NAO_ENCONTRADO","SEM_ARQUIVO"])] if not base.empty else base
+    elif choice_key == "Ausentes Flex":
+        base = base[base.get("status_flex").astype(str).isin(["NAO_ENCONTRADO","SEM_ARQUIVO"])] if not base.empty else base
+    elif choice_key == "Conferidos":
+        # conferidos agora vêm da tabela completa (motivo = Conferido)
+        if base.empty:
+            base = base
+
+            base = base[base.get("motivo").astype(str).str.lower().eq("conferido")]
+
+    if search and not base.empty:
+        s = search.lower().strip()
+        mask = pd.Series(False, index=base.index)
+        for col in [c for c in base.columns if c in ["serie","numero","motivo"]]:
+            mask = mask | base[col].astype(str).str.lower().str.contains(s, na=False)
+        base = base[mask]
+
+    if not base.empty:
+        sort_cols = [c for c in ["serie","numero","motivo"] if c in base.columns]
+        if sort_cols:
+            base = base.sort_values(sort_cols)
+
+    if base.empty:
+        st.success("Sem registros nesse filtro ✅")
+
+        st.dataframe(style_table(base), use_container_width=True, height=520)
+
+st.write("")
+d1, d2 = st.columns([1,2])
+with d1:
+    if not sefaz_df.empty:
+        xls = excel_download({"SEFAZ": sefaz_df, "ADM": adm_df, "FLEX": flex_df, "ALERTAS": alerts})
+        st.download_button("Baixar relatório", data=xls, file_name="auditoria_nfce.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+with d2:
+    st.caption("Dica: use os filtros (pílulas) + busca para isolar divergências e ausências rapidamente.")
