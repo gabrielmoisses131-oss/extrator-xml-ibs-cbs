@@ -218,10 +218,6 @@ def excel_download(df_dict):
                     freeze_col = max(freeze_col, [norm_txt(x) for x in df.columns].index(c) + 1)
             ws.freeze_panes(1, freeze_col)
 
-            # Filtro
-            if len(df.columns) > 0:
-                ws.autofilter(0, 0, max(0, len(df)), max(0, len(df.columns) - 1))
-
             # Cabeçalho
             ws.set_row(0, 20)
             for col_idx, col_name in enumerate(df.columns):
