@@ -1013,6 +1013,108 @@ div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !impo
 /* Remover qualquer overlay de “status”/toast do Streamlit */
 div[data-testid="stToast"]{display:none !important;}
 
+
+/* ============================
+   KPI v2 — neon/glow premium
+   (top neon bar + progress)
+============================ */
+
+/* top neon bar em vez da barra esquerda */
+.kpi::before{
+  content:"";
+  position:absolute;
+  left:0; top:0; right:0;
+  height:4px;
+  width:auto;
+  background: rgba(148,163,184,.55);
+  box-shadow: 0 0 18px rgba(148,163,184,.35);
+  border-radius: 18px 18px 0 0;
+  z-index: 2;
+}
+.kpi.kpi-ibs::before{
+  background: linear-gradient(90deg, rgba(37,99,235,.95), rgba(59,130,246,.55));
+  box-shadow: 0 0 22px rgba(37,99,235,.35);
+}
+.kpi.kpi-cbs::before{
+  background: linear-gradient(90deg, rgba(22,163,74,.95), rgba(34,197,94,.55));
+  box-shadow: 0 0 22px rgba(22,163,74,.35);
+}
+.kpi.kpi-cred::before{
+  background: linear-gradient(90deg, rgba(245,158,11,.98), rgba(251,191,36,.55));
+  box-shadow: 0 0 22px rgba(245,158,11,.35);
+}
+.kpi.kpi-total::before{
+  background: linear-gradient(90deg, rgba(124,58,237,.98), rgba(168,85,247,.55));
+  box-shadow: 0 0 22px rgba(124,58,237,.35);
+}
+
+/* ícone com “neon glass” */
+.kpi-icon{
+  width:44px; height:44px;
+  border-radius: 14px;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(15,23,42,.10);
+  box-shadow: 0 12px 32px rgba(2,6,23,.12);
+  backdrop-filter: blur(10px);
+}
+.kpi.kpi-ibs .kpi-icon{
+  background: radial-gradient(circle at 30% 30%, rgba(37,99,235,.20), rgba(255,255,255,.55) 60%);
+  box-shadow: 0 12px 34px rgba(37,99,235,.14);
+}
+.kpi.kpi-cbs .kpi-icon{
+  background: radial-gradient(circle at 30% 30%, rgba(22,163,74,.20), rgba(255,255,255,.55) 60%);
+  box-shadow: 0 12px 34px rgba(22,163,74,.14);
+}
+.kpi.kpi-cred .kpi-icon{
+  background: radial-gradient(circle at 30% 30%, rgba(245,158,11,.24), rgba(255,255,255,.55) 60%);
+  box-shadow: 0 12px 34px rgba(245,158,11,.14);
+}
+.kpi.kpi-total .kpi-icon{
+  background: radial-gradient(circle at 30% 30%, rgba(124,58,237,.24), rgba(255,255,255,.55) 60%);
+  box-shadow: 0 12px 34px rgba(124,58,237,.14);
+}
+
+/* progress bar dentro do KPI */
+.kpi-progress{
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(15,23,42,.06);
+  border: 1px solid rgba(15,23,42,.08);
+  overflow:hidden;
+  margin-top: 14px;
+  position: relative;
+  z-index: 1;
+}
+.kpi-progress > span{
+  display:block;
+  height:100%;
+  border-radius: 999px;
+  width: 0%;
+  animation: kpiProg 900ms ease-out forwards;
+}
+.kpi.kpi-ibs .kpi-progress > span{
+  background: linear-gradient(90deg, rgba(37,99,235,1), rgba(59,130,246,.55));
+  box-shadow: 0 0 18px rgba(37,99,235,.28);
+}
+.kpi.kpi-cbs .kpi-progress > span{
+  background: linear-gradient(90deg, rgba(22,163,74,1), rgba(34,197,94,.55));
+  box-shadow: 0 0 18px rgba(22,163,74,.28);
+}
+.kpi.kpi-cred .kpi-progress > span{
+  background: linear-gradient(90deg, rgba(245,158,11,1), rgba(251,191,36,.55));
+  box-shadow: 0 0 18px rgba(245,158,11,.28);
+}
+.kpi.kpi-total .kpi-progress > span{
+  background: linear-gradient(90deg, rgba(124,58,237,1), rgba(168,85,247,.55));
+  box-shadow: 0 0 18px rgba(124,58,237,.28);
+}
+
+@keyframes kpiProg{
+  from{ width:0% }
+  to{ width: var(--w, 70%); }
+}
+
 </style>
 """
 
