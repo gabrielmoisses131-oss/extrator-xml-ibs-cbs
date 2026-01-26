@@ -1138,6 +1138,207 @@ div[data-testid="stToggle"] label{
   padding: 8px 12px;
   box-shadow: 0 18px 50px rgba(2,6,23,.08);
 }
+
+/* ============================
+   Componentes do "design sofisticado" (adaptado pro neon/glow)
+============================ */
+
+/* Header card (se você quiser usar em outras telas) */
+.header-card{
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+}
+
+/* Metric cards (usadas nos KPIs clicáveis) */
+.metric-card{
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(15,23,42,.10);
+  position: relative;
+  overflow: hidden;
+  transition: transform .22s ease, box-shadow .22s ease, filter .22s ease;
+}
+.metric-card:hover{
+  transform: translateY(-6px);
+  box-shadow: var(--shadow2);
+}
+.metric-card::before{
+  content:'';
+  position:absolute;
+  top:0; left:0; right:0;
+  height:4px;
+  border-radius: 18px 18px 0 0;
+  opacity: .95;
+}
+.metric-card-green::before{ background: linear-gradient(90deg, rgba(22,163,74,1), rgba(34,197,94,.55)); box-shadow: 0 0 22px rgba(22,163,74,.28); }
+.metric-card-blue::before{ background: linear-gradient(90deg, rgba(37,99,235,1), rgba(59,130,246,.55)); box-shadow: 0 0 22px rgba(37,99,235,.28); }
+.metric-card-yellow::before{ background: linear-gradient(90deg, rgba(245,158,11,1), rgba(251,191,36,.55)); box-shadow: 0 0 22px rgba(245,158,11,.28); }
+.metric-card-purple::before{ background: linear-gradient(90deg, rgba(124,58,237,1), rgba(168,85,247,.55)); box-shadow: 0 0 22px rgba(124,58,237,.28); }
+
+.metric-title{ color: var(--muted); font-size: 13px; font-weight: 800; margin:0; }
+.metric-subtitle{ color: rgba(100,116,139,.9); font-size: 12px; margin: 6px 0 0 0; }
+.metric-value{
+  color: var(--ink);
+  font-size: 26px;
+  font-weight: 900;
+  margin: 14px 0 8px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.metric-description{ color: rgba(100,116,139,.9); font-size: 12px; margin:0; }
+
+.metric-icon{
+  position:absolute;
+  top: 14px;
+  right: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(255,255,255,.70);
+  border: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 12px 32px rgba(2,6,23,.10);
+  backdrop-filter: blur(10px);
+}
+.metric-icon svg{ width: 20px; height: 20px; }
+
+.progress-bar{
+  height: 6px;
+  background: rgba(15,23,42,.06);
+  border-radius: 999px;
+  margin-top: 14px;
+  overflow:hidden;
+  border: 1px solid rgba(15,23,42,.08);
+}
+.progress-fill{
+  height: 100%;
+  border-radius: 999px;
+  width: 0%;
+  animation: progressAnimation 900ms ease-out forwards;
+}
+.progress-blue{ background: linear-gradient(90deg, rgba(37,99,235,1), rgba(59,130,246,.55)); box-shadow: 0 0 18px rgba(37,99,235,.22); }
+.progress-green{ background: linear-gradient(90deg, rgba(22,163,74,1), rgba(34,197,94,.55)); box-shadow: 0 0 18px rgba(22,163,74,.22); }
+.progress-yellow{ background: linear-gradient(90deg, rgba(245,158,11,1), rgba(251,191,36,.55)); box-shadow: 0 0 18px rgba(245,158,11,.22); }
+.progress-purple{ background: linear-gradient(90deg, rgba(124,58,237,1), rgba(168,85,247,.55)); box-shadow: 0 0 18px rgba(124,58,237,.22); }
+
+@keyframes progressAnimation{
+  from{ width: 0; }
+  to{ width: var(--w, 70%); }
+}
+
+/* Tax cards */
+.tax-card{
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(15,23,42,.10);
+}
+.tax-header{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom: 16px; gap: 12px; }
+.tax-icon-wrapper{
+  width: 42px; height: 42px;
+  background: rgba(15,23,42,.04);
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 14px;
+  display:flex; align-items:center; justify-content:center;
+}
+.tax-title{ color: var(--ink); font-size: 15px; font-weight: 900; margin:0; }
+.tax-subtitle{ color: var(--muted); font-size: 12px; margin: 6px 0 0 0; }
+.status-badge{
+  background: rgba(22,163,74,.10);
+  color: rgba(22,163,74,1);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  border: 1px solid rgba(22,163,74,.18);
+  white-space: nowrap;
+}
+.status-dot{
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(22,163,74,1);
+  box-shadow: 0 0 16px rgba(22,163,74,.35);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse{ 0%,100%{ opacity: 1 } 50%{ opacity: .5 } }
+
+.tax-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding: 12px 14px;
+  background: rgba(15,23,42,.04);
+  border: 1px solid rgba(15,23,42,.06);
+  border-radius: 14px;
+  margin-bottom: 10px;
+}
+.tax-row-label{ color: var(--muted); font-size: 13px; font-weight: 800; }
+.tax-row-value{
+  font-weight: 900;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.tax-divider{
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(15,23,42,.12), transparent);
+  margin: 14px 0;
+}
+.tax-total{ display:flex; justify-content:space-between; align-items:center; }
+.tax-total-label{ color: var(--ink); font-size: 13px; font-weight: 900; }
+.tax-total-value{
+  color: rgba(22,163,74,1);
+  font-size: 16px;
+  font-weight: 900;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Alert */
+.alert-warning{
+  background: linear-gradient(135deg, rgba(255,247,237,.95), rgba(254,243,199,.9));
+  border: 1px solid rgba(245,158,11,.35);
+  border-radius: 16px;
+  padding: 14px 16px;
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  box-shadow: 0 12px 32px rgba(245,158,11,.10);
+}
+.alert-icon{
+  width: 36px; height: 36px;
+  background: rgba(245,158,11,.18);
+  border: 1px solid rgba(245,158,11,.22);
+  border-radius: 12px;
+  display:flex; align-items:center; justify-content:center;
+}
+.alert-text{ color: #92400e; font-size: 13px; }
+
+/* Problems list */
+.problem-item{
+  background: rgba(15,23,42,.04);
+  border: 1px solid rgba(15,23,42,.06);
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  display:flex;
+  align-items:flex-start;
+  gap: 10px;
+}
+.problem-icon{ color: rgba(245,158,11,1); font-size: 16px; }
+.problem-filename{ color: rgba(37,99,235,1); font-size: 12px; font-weight: 900; }
+.problem-error{ color: var(--muted); font-size: 12px; }
+
+</style>
+"""
 </style>
 """
 
@@ -1886,17 +2087,23 @@ if selected_kpi not in ("all", "ibs", "cbs", "cred", "total"):
     selected_kpi = "all"
 
 
+
+max_kpi = max(float(ibs_total or 0), float(cbs_total or 0), float(creditos_total or 0), float(total_tributos or 0), 1e-9)
+def _pct(v):
+    v = float(v or 0)
+    return f"{max(0.0, min(1.0, v/max_kpi))*100:.1f}%"
+
 st.markdown(
     f"""
 <div class="kpi-grid">
   <a class="kpi-link" href="?kpi=ibs">
-    <div class="kpi kpi-ibs {'is-active' if selected_kpi=='ibs' else ''}">
+    <div class="metric-card metric-card-blue {'is-active' if selected_kpi=='ibs' else ''}" style="--w:{_pct(ibs_total)};">
       <div class="kpi-head">
         <div>
-          <div class="label">IBS Total</div>
-          <div class="pill">↗ Alíquota {ALIQUOTA_IBS_TEXTO}</div>
+          <p class="metric-title">IBS Total</p>
+          <p class="metric-subtitle">• Alíquota {ALIQUOTA_IBS_TEXTO}</p>
         </div>
-        <div class="kpi-icon" aria-hidden="true">
+        <div class="metric-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M7 17V7" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
             <path d="M7 17h10" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
@@ -1904,38 +2111,40 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="value">{money(ibs_total)}</div>
-      <div class="sub">Soma das bases IBS (XML)</div>
+      <div class="metric-value">{money(ibs_total)}</div>
+      <p class="metric-description">Soma das bases IBS (XML)</p>
+      <div class="progress-bar"><div class="progress-fill progress-blue"></div></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cbs">
-    <div class="kpi kpi-cbs {'is-active' if selected_kpi=='cbs' else ''}">
+    <div class="metric-card metric-card-green {'is-active' if selected_kpi=='cbs' else ''}" style="--w:{_pct(cbs_total)};">
       <div class="kpi-head">
         <div>
-          <div class="label">CBS Total</div>
-          <div class="pill">↗ Alíquota {ALIQUOTA_CBS_TEXTO}</div>
+          <p class="metric-title">CBS Total</p>
+          <p class="metric-subtitle">• Alíquota {ALIQUOTA_CBS_TEXTO}</p>
         </div>
-        <div class="kpi-icon" aria-hidden="true">
+        <div class="metric-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M8 7h8M8 12h8M8 17h8" stroke="#16a34a" stroke-width="2" stroke-linecap="round"/>
             <path d="M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" stroke="#16a34a" stroke-width="2"/>
           </svg>
         </div>
       </div>
-      <div class="value">{money(cbs_total)}</div>
-      <div class="sub">Soma das bases CBS (XML)</div>
+      <div class="metric-value">{money(cbs_total)}</div>
+      <p class="metric-description">Soma das bases CBS (XML)</p>
+      <div class="progress-bar"><div class="progress-fill progress-green"></div></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cred">
-    <div class="kpi kpi-cred {'is-active' if selected_kpi=='cred' else ''}">
+    <div class="metric-card metric-card-yellow {'is-active' if selected_kpi=='cred' else ''}" style="--w:{_pct(creditos_total)};">
       <div class="kpi-head">
         <div>
-          <div class="label">Créditos</div>
-          <div class="pill">↗ IBS + CBS</div>
+          <p class="metric-title">Créditos</p>
+          <p class="metric-subtitle">• IBS + CBS</p>
         </div>
-        <div class="kpi-icon" aria-hidden="true">
+        <div class="metric-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M7 12h10" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
             <path d="M12 7v10" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
@@ -1943,19 +2152,20 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="value">{money(creditos_total)}</div>
-      <div class="sub">Somatório de vIBS + vCBS</div>
+      <div class="metric-value">{money(creditos_total)}</div>
+      <p class="metric-description">Somatório de vIBS + vCBS</p>
+      <div class="progress-bar"><div class="progress-fill progress-yellow"></div></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=total">
-    <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}">
+    <div class="metric-card metric-card-purple {'is-active' if selected_kpi=='total' else ''}" style="--w:{_pct(total_tributos)};">
       <div class="kpi-head">
         <div>
-          <div class="label">ICMS Total</div>
-          <div class="pill">↗ ICMS</div>
+          <p class="metric-title">ICMS Total</p>
+          <p class="metric-subtitle">• ICMS</p>
         </div>
-        <div class="kpi-icon" aria-hidden="true">
+        <div class="metric-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M7 8h10M7 12h10M7 16h10" stroke="#a855f7" stroke-width="2" stroke-linecap="round"/>
             <path d="M9 3h6v3H9z" stroke="#a855f7" stroke-width="2"/>
@@ -1963,8 +2173,9 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="value">{money(total_tributos)}</div>
-      <div class="sub">Soma do ICMS (XML)</div>
+      <div class="metric-value">{money(total_tributos)}</div>
+      <p class="metric-description">Soma do ICMS (XML)</p>
+      <div class="progress-bar"><div class="progress-fill progress-purple"></div></div>
     </div>
   </a>
 </div>
@@ -1975,55 +2186,43 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-# Painéis (estilo Figma) — Débitos vs Créditos
+
+
+# Painéis (no estilo dos seus Tax Cards)
 c1, c2 = st.columns(2, gap="large")
 pis_deb = float(total_pis or 0.0)
 cof_deb = float(total_cofins or 0.0)
 pis_cred = 0.0
 cof_cred = 0.0
 
-def _bar_width(val, vmax):
-    if vmax <= 0:
-        return "0%"
-    return f"{max(0.0, min(1.0, val / vmax)) * 100:.1f}%"
-
-max_pis = max(pis_deb, pis_cred, 1e-9)
-max_cof = max(cof_deb, cof_cred, 1e-9)
-
 with c1:
     st.markdown(
         f"""
-<div class="card ibs-panel">
-  <div class="panel-title">
-<div class="panel-left">
-<div class="icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M4 18V6" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M4 18h16" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M8 14l3-3 3 2 4-5" stroke="#2563eb" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-</div>
-<div>
-      <h3>PIS Total</h3>
-<div class="hint">Programa de Integração Social (PIS)</div>
-</div>
-</div>
-<span class="badge on">Ativo</span>
+<div class="tax-card">
+  <div class="tax-header">
+    <div style="display:flex; gap:12px;">
+      <div class="tax-icon-wrapper" aria-hidden="true">📊</div>
+      <div>
+        <h3 class="tax-title">PIS Total</h3>
+        <p class="tax-subtitle">Programa de Integração Social (PIS)</p>
+      </div>
+    </div>
+    <div class="status-badge"><span class="status-dot"></span>Ativo</div>
   </div>
 
-  <div class="bar-row">
-<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(pis_deb)}</span></div>
-<div class="bar-track"><div class="bar-fill ibs" style="width:{_bar_width(pis_deb, max_pis)}"></div></div>
+  <div class="tax-row">
+    <span class="tax-row-label">Débitos</span>
+    <span class="tax-row-value">{money(pis_deb)}</span>
+  </div>
+  <div class="tax-row">
+    <span class="tax-row-label">Créditos</span>
+    <span class="tax-row-value" style="color:#ef4444;">-{money(pis_cred)}</span>
   </div>
 
-  <div class="bar-row">
-<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(pis_cred)}</span></div>
-<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(pis_cred, max_pis)}"></div></div>
-  </div>
-
-  <div class="bar-foot green">
-    <strong>Saldo a Recolher</strong>
-<span class="badge-money" style="color:#2563eb;">{money(pis_deb - pis_cred)}</span>
+  <div class="tax-divider"></div>
+  <div class="tax-total">
+    <span class="tax-total-label">Total</span>
+    <span class="tax-total-value">{money(pis_deb - pis_cred)}</span>
   </div>
 </div>
 """,
@@ -2033,55 +2232,78 @@ with c1:
 with c2:
     st.markdown(
         f"""
-<div class="card cbs-panel">
-  <div class="panel-title">
-<div class="panel-left">
-<div class="icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M4 18V6" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M4 18h16" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
-        <path d="M8 14l3-3 3 2 4-5" stroke="#16a34a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-</div>
-<div>
-      <h3>COFINS Total</h3>
-<div class="hint">Contribuição para o Financiamento da Seguridade Social (COFINS)</div>
-</div>
-</div>
-<span class="badge on" style="background:#ecfdf3;border-color:#dcfce7;color:#166534;">Ativo</span>
+<div class="tax-card">
+  <div class="tax-header">
+    <div style="display:flex; gap:12px;">
+      <div class="tax-icon-wrapper" aria-hidden="true">📊</div>
+      <div>
+        <h3 class="tax-title">COFINS Total</h3>
+        <p class="tax-subtitle">Contribuição para o Financiamento da Seguridade Social (COFINS)</p>
+      </div>
+    </div>
+    <div class="status-badge"><span class="status-dot"></span>Ativo</div>
   </div>
 
-  <div class="bar-row">
-<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(cof_deb)}</span></div>
-<div class="bar-track"><div class="bar-fill cbs" style="width:{_bar_width(cof_deb, max_cof)}"></div></div>
+  <div class="tax-row">
+    <span class="tax-row-label">Débitos</span>
+    <span class="tax-row-value">{money(cof_deb)}</span>
+  </div>
+  <div class="tax-row">
+    <span class="tax-row-label">Créditos</span>
+    <span class="tax-row-value" style="color:#ef4444;">-{money(cof_cred)}</span>
   </div>
 
-  <div class="bar-row">
-<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(cof_cred)}</span></div>
-<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(cof_cred, max_cof)}"></div></div>
-  </div>
-
-  <div class="bar-foot">
-    <strong>Saldo a Recolher</strong>
-<span class="badge-money" style="color:#16a34a;">{money(cof_deb - cof_cred)}</span>
+  <div class="tax-divider"></div>
+  <div class="tax-total">
+    <span class="tax-total-label">Total</span>
+    <span class="tax-total-value">{money(cof_deb - cof_cred)}</span>
   </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
-
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-# Alerts
+# Alerts (premium)
 if errors:
-    st.warning("Alguns arquivos tiveram problemas:")
-    for e in errors[:10]:
-        st.write("•", e)
-    if len(errors) > 10:
-        st.caption(f"... e mais {len(errors)-10} itens")
+    st.markdown(
+        f"""
+<div class="alert-warning">
+  <div class="alert-icon">⚠️</div>
+  <div class="alert-text">
+    <strong>Atenção:</strong> {len(errors)} arquivo(s) tiveram problemas. Abra a lista abaixo para detalhes.
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    with st.expander(f"⚠️ Alguns arquivos tiveram problemas ({len(errors)})", expanded=False):
+        for e in errors[:50]:
+            safe = html.escape(str(e))
+            # separa nome:mensagem quando dá
+            if ": " in safe:
+                name, msg = safe.split(": ", 1)
+            elif ":" in safe:
+                name, msg = safe.split(":", 1)
+            else:
+                name, msg = safe, "erro"
+            st.markdown(
+                f"""
+<div class="problem-item">
+  <span class="problem-icon">📄</span>
+  <div>
+    <span class="problem-filename">{name}</span>
+    <span class="problem-error">: {msg}</span>
+  </div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
 
 # ---------- Filters + table ----------
+
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("## Itens do Documento")
 st.caption("Detalhamento dos itens extraídos do XML (inclui base vBC e valores de IBS/CBS quando presentes).")
