@@ -25,7 +25,7 @@ from textwrap import dedent
 # -----------------------------
 # Page config + CSS (Figma-like)
 # -----------------------------
-st.set_page_config(page_title="Extrator XML - IBS/CBS", page_icon="assets/tax_icon_32.png", layout="wide")
+st.set_page_config(page_title="Extrator XML - IBS/CBS", page_icon="assets/favicon_v2.png", layout="wide")
 
 CSS = """
 <style>
