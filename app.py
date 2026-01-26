@@ -1336,28 +1336,75 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 # -----------------------------
 # UI
 # -----------------------------
-st.markdown(dedent("""
-<div class="topbar">
-  <div class="brand">
-<div class="brand-badge" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M8 12h8M8 16h8" stroke="#1f2937" stroke-width="1.7" stroke-linecap="round"/>
-      </svg>
-</div>
-<div>
-      <h1>Extrator XML - IBS/CBS</h1>
-<div class="sub">Visualização de dados fiscais da reforma tributária</div>
-</div>
+# -----------------------------
+# Header (modern - compact)
+# -----------------------------
+st.markdown("""
+<style>
+.header-container{
+  font-family:'Inter',sans-serif;
+  background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(255,255,255,.88));
+  border:1px solid rgba(15,23,42,.08);
+  border-radius:16px;
+  padding:14px 16px;
+  margin:0 0 14px 0;
+  box-shadow:0 12px 32px rgba(2,6,23,.10);
+}
+.header-top{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.header-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.version-badge{
+  padding:4px 10px;border-radius:999px;
+  font-size:11px;font-weight:800;
+  background:rgba(59,130,246,.12);
+  color:#2563eb;border:1px solid rgba(59,130,246,.25);
+  white-space:nowrap;
+}
+.header-title{font-size:1.35rem;font-weight:900;margin:0;color:#0f172a;letter-spacing:-.02em;}
+.header-title span{
+  background:linear-gradient(135deg,#3b82f6,#10b981);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.header-sub{font-size:.82rem;color:#64748b;margin-top:2px;}
+.status-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 10px;border-radius:999px;
+  font-size:11px;font-weight:800;
+  background:rgba(241,245,249,.9);
+  border:1px solid #e2e8f0;color:#475569;
+  white-space:nowrap;
+}
+.status-dot{width:7px;height:7px;border-radius:999px;background:#22c55e;}
+.info-banner{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:12px;
+  background:rgba(59,130,246,.08);
+  border:1px solid rgba(59,130,246,.20);
+  font-size:.82rem;color:#1e293b;
+}
+.info-banner b{color:#2563eb;font-weight:900;}
+@media(max-width:820px){
+  .header-top{flex-direction:column;align-items:flex-start;}
+}
+</style>
+
+<div class="header-container">
+  <div class="header-top">
+    <div>
+      <div class="header-left">
+        <span class="version-badge">⚡ v2.0</span>
+        <h1 class="header-title">Extrator XML - <span>IBS/CBS</span></h1>
+      </div>
+      <div class="header-sub">🛡️ Visualização de dados fiscais da reforma tributária</div>
+    </div>
+    <div class="status-badge"><span class="status-dot"></span>Conectado</div>
   </div>
 
-  <div class="status-pill">
-<span class="status-dot"></span>
-    Pronto para análise
+  <div class="info-banner">
+    ⚡ Envie uma <b>planilha modelo</b> (.xlsx) na lateral para inserir os dados na aba <b>LANÇAMENTOS</b> mantendo suas fórmulas.
   </div>
 </div>
-"""), unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # Sidebar: uploads
 with st.sidebar:
