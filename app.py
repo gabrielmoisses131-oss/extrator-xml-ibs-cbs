@@ -16,7 +16,6 @@ import xml.etree.ElementTree as ET
 
 import pandas as pd
 import streamlit as st
-import urllib.parse
 import html
 import time
 from openpyxl import load_workbook
@@ -1012,370 +1011,7 @@ div[style*="position: fixed"][style*="bottom"][style*="right"]{display:none !imp
 div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !important;}
 
 /* Remover qualquer overlay de “status”/toast do Streamlit */
-
-
-
-/* ===== Topbar v2 (Auditor Fiscal) ===== */
-.topbar{
-  padding: 18px 22px;
-  border-radius: 18px;
-  border: 1px solid rgba(15,23,42,.08);
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.88));
-  box-shadow: 0 22px 60px rgba(2,6,23,.10);
-}
-.topbar .brand-badge{
-  width: 46px; height: 46px;
-  border-radius: 16px;
-  background: radial-gradient(circle at 30% 20%, rgba(168,85,247,.30), rgba(59,130,246,.18) 40%, rgba(255,255,255,.70) 72%);
-  box-shadow: 0 18px 50px rgba(124,58,237,.22);
-  border: 1px solid rgba(124,58,237,.22);
-}
-.topbar .brand-badge svg{ filter: drop-shadow(0 8px 18px rgba(2,6,23,.10)); }
-.brand-line{
-  display:flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.brand-accent{
-  display:inline-block;
-  width: 54px;
-  height: 18px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1));
-  box-shadow: 0 14px 34px rgba(124,58,237,.30);
-  transform: translateY(-2px);
-}
-.status-pill.ok{
-  background: rgba(34,197,94,.12);
-  border: 1px solid rgba(34,197,94,.20);
-  color: #16a34a;
-  box-shadow: 0 18px 44px rgba(34,197,94,.12);
-}
-
-/* Ações rápidas */
-.action-hint{
-  color: rgba(100,116,139,.95);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.62);
-  border: 1px solid rgba(15,23,42,.08);
-  box-shadow: 0 18px 50px rgba(2,6,23,.08);
-}
-
-
-/* Actionbar premium */
-.actionbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap: 14px;
-  margin: 8px 0 14px 0;
-}
-.actionbar-left{
-  display:flex;
-  gap: 10px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-.action-btn{
-  display:inline-flex;
-  align-items:center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  font-weight: 800;
-  letter-spacing: .2px;
-  font-size: 13px;
-  text-decoration:none !important;
-  color: rgba(15,23,42,.92) !important;
-  background: rgba(255,255,255,.70);
-  border: 1px solid rgba(15,23,42,.10);
-  box-shadow: 0 18px 50px rgba(2,6,23,.10);
-  backdrop-filter: blur(10px);
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-}
-.action-btn:hover{
-  transform: translateY(-2px);
-  border-color: rgba(124,58,237,.20);
-  box-shadow: 0 24px 64px rgba(124,58,237,.14), 0 18px 50px rgba(2,6,23,.10);
-}
-.action-btn .btn-ico{
-  width: 30px; height: 30px;
-  display:flex; align-items:center; justify-content:center;
-  border-radius: 12px;
-  background: radial-gradient(circle at 30% 30%, rgba(124,58,237,.18), rgba(255,255,255,.55) 62%);
-  border: 1px solid rgba(124,58,237,.14);
-  box-shadow: 0 14px 34px rgba(124,58,237,.12);
-}
-.action-btn.ghost{
-  background: rgba(255,255,255,.55);
-  border: 1px solid rgba(15,23,42,.08);
-}
-.action-btn.is-on{
-  border-color: rgba(124,58,237,.25);
-  box-shadow: 0 26px 70px rgba(124,58,237,.16), 0 18px 50px rgba(2,6,23,.10);
-}
-.action-btn .btn-pill{
-  margin-left: 2px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: .4px;
-  background: rgba(124,58,237,.12);
-  border: 1px solid rgba(124,58,237,.18);
-  color: rgba(124,58,237,.95);
-}
-.actionbar-right{ flex: 1; display:flex; justify-content:flex-end; }
-
-/* Radios / toggles mais “premium” */
-div[data-testid="stToggle"] label{
-  background: rgba(255,255,255,.75);
-  border: 1px solid rgba(15,23,42,.10);
-  border-radius: 999px;
-  padding: 8px 12px;
-  box-shadow: 0 18px 50px rgba(2,6,23,.08);
-}
-
-/* ============================
-   Componentes do "design sofisticado" (adaptado pro neon/glow)
-============================ */
-
-/* Header card (se você quiser usar em outras telas) */
-.header-card{
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
-  border: 1px solid rgba(15,23,42,.10);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  padding: 18px 20px;
-}
-
-/* Metric cards (usadas nos KPIs clicáveis) */
-.metric-card{
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
-  border-radius: 18px;
-  padding: 16px 18px;
-  box-shadow: var(--shadow);
-  border: 1px solid rgba(15,23,42,.10);
-  position: relative;
-  overflow: hidden;
-  transition: transform .22s ease, box-shadow .22s ease, filter .22s ease;
-}
-.metric-card:hover{
-  transform: translateY(-6px);
-  box-shadow: var(--shadow2);
-}
-.metric-card::before{
-  content:'';
-  position:absolute;
-  top:0; left:0; right:0;
-  height:4px;
-  border-radius: 18px 18px 0 0;
-  opacity: .95;
-}
-.metric-card-green::before{ background: linear-gradient(90deg, rgba(22,163,74,1), rgba(34,197,94,.55)); box-shadow: 0 0 22px rgba(22,163,74,.28); }
-.metric-card-blue::before{ background: linear-gradient(90deg, rgba(37,99,235,1), rgba(59,130,246,.55)); box-shadow: 0 0 22px rgba(37,99,235,.28); }
-.metric-card-yellow::before{ background: linear-gradient(90deg, rgba(245,158,11,1), rgba(251,191,36,.55)); box-shadow: 0 0 22px rgba(245,158,11,.28); }
-.metric-card-purple::before{ background: linear-gradient(90deg, rgba(124,58,237,1), rgba(168,85,247,.55)); box-shadow: 0 0 22px rgba(124,58,237,.28); }
-
-.metric-title{ color: var(--muted); font-size: 13px; font-weight: 800; margin:0; }
-.metric-subtitle{ color: rgba(100,116,139,.9); font-size: 12px; margin: 6px 0 0 0; }
-.metric-value{
-  color: var(--ink);
-  font-size: 26px;
-  font-weight: 900;
-  margin: 14px 0 8px 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-}
-.metric-description{ color: rgba(100,116,139,.9); font-size: 12px; margin:0; }
-
-.metric-icon{
-  position:absolute;
-  top: 14px;
-  right: 14px;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background: rgba(255,255,255,.70);
-  border: 1px solid rgba(15,23,42,.08);
-  box-shadow: 0 12px 32px rgba(2,6,23,.10);
-  backdrop-filter: blur(10px);
-}
-.metric-icon svg{ width: 20px; height: 20px; }
-
-.progress-bar{
-  height: 6px;
-  background: rgba(15,23,42,.06);
-  border-radius: 999px;
-  margin-top: 14px;
-  overflow:hidden;
-  border: 1px solid rgba(15,23,42,.08);
-}
-.progress-fill{
-  height: 100%;
-  border-radius: 999px;
-  width: 0%;
-  animation: progressAnimation 900ms ease-out forwards;
-}
-.progress-blue{ background: linear-gradient(90deg, rgba(37,99,235,1), rgba(59,130,246,.55)); box-shadow: 0 0 18px rgba(37,99,235,.22); }
-.progress-green{ background: linear-gradient(90deg, rgba(22,163,74,1), rgba(34,197,94,.55)); box-shadow: 0 0 18px rgba(22,163,74,.22); }
-.progress-yellow{ background: linear-gradient(90deg, rgba(245,158,11,1), rgba(251,191,36,.55)); box-shadow: 0 0 18px rgba(245,158,11,.22); }
-.progress-purple{ background: linear-gradient(90deg, rgba(124,58,237,1), rgba(168,85,247,.55)); box-shadow: 0 0 18px rgba(124,58,237,.22); }
-
-@keyframes progressAnimation{
-  from{ width: 0; }
-  to{ width: var(--w, 70%); }
-}
-
-/* Tax cards */
-.tax-card{
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
-  border-radius: 18px;
-  padding: 18px 20px;
-  box-shadow: var(--shadow);
-  border: 1px solid rgba(15,23,42,.10);
-}
-.tax-header{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom: 16px; gap: 12px; }
-.tax-icon-wrapper{
-  width: 42px; height: 42px;
-  background: rgba(15,23,42,.04);
-  border: 1px solid rgba(15,23,42,.08);
-  border-radius: 14px;
-  display:flex; align-items:center; justify-content:center;
-}
-.tax-title{ color: var(--ink); font-size: 15px; font-weight: 900; margin:0; }
-.tax-subtitle{ color: var(--muted); font-size: 12px; margin: 6px 0 0 0; }
-.status-badge{
-  background: rgba(22,163,74,.10);
-  color: rgba(22,163,74,1);
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  display:flex;
-  align-items:center;
-  gap: 8px;
-  border: 1px solid rgba(22,163,74,.18);
-  white-space: nowrap;
-}
-.status-dot{
-  width: 8px; height: 8px; border-radius: 50%;
-  background: rgba(22,163,74,1);
-  box-shadow: 0 0 16px rgba(22,163,74,.35);
-  animation: pulse 1.6s infinite;
-}
-@keyframes pulse{ 0%,100%{ opacity: 1 } 50%{ opacity: .5 } }
-
-.tax-row{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding: 12px 14px;
-  background: rgba(15,23,42,.04);
-  border: 1px solid rgba(15,23,42,.06);
-  border-radius: 14px;
-  margin-bottom: 10px;
-}
-.tax-row-label{ color: var(--muted); font-size: 13px; font-weight: 800; }
-.tax-row-value{
-  font-weight: 900;
-  font-size: 13px;
-  color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-}
-.tax-divider{
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(15,23,42,.12), transparent);
-  margin: 14px 0;
-}
-.tax-total{ display:flex; justify-content:space-between; align-items:center; }
-.tax-total-label{ color: var(--ink); font-size: 13px; font-weight: 900; }
-.tax-total-value{
-  color: rgba(22,163,74,1);
-  font-size: 16px;
-  font-weight: 900;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-}
-
-/* Alert */
-.alert-warning{
-  background: linear-gradient(135deg, rgba(255,247,237,.95), rgba(254,243,199,.9));
-  border: 1px solid rgba(245,158,11,.35);
-  border-radius: 16px;
-  padding: 14px 16px;
-  display:flex;
-  align-items:center;
-  gap: 12px;
-  box-shadow: 0 12px 32px rgba(245,158,11,.10);
-}
-.alert-icon{
-  width: 36px; height: 36px;
-  background: rgba(245,158,11,.18);
-  border: 1px solid rgba(245,158,11,.22);
-  border-radius: 12px;
-  display:flex; align-items:center; justify-content:center;
-}
-.alert-text{ color: #92400e; font-size: 13px; }
-
-/* Problems list */
-.problem-item{
-  background: rgba(15,23,42,.04);
-  border: 1px solid rgba(15,23,42,.06);
-  border-radius: 14px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-  display:flex;
-  align-items:flex-start;
-  gap: 10px;
-}
-.problem-icon{ color: rgba(245,158,11,1); font-size: 16px; }
-.problem-filename{ color: rgba(37,99,235,1); font-size: 12px; font-weight: 900; }
-.problem-error{ color: var(--muted); font-size: 12px; }
-
-
-/* ===== Neon boost (premium glow) ===== */
-.metric-card{
-  background: rgba(255,255,255,.86) !important;
-  backdrop-filter: blur(14px);
-}
-.metric-card:hover{
-  box-shadow: 0 22px 70px rgba(2,6,23,.18), 0 0 0 1px rgba(15,23,42,.06) !important;
-}
-.metric-card-green:hover{ box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(34,197,94,.28) !important; }
-.metric-card-blue:hover{  box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(37,99,235,.28) !important; }
-.metric-card-yellow:hover{box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(245,158,11,.30) !important; }
-.metric-card-purple:hover{box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(124,58,237,.30) !important; }
-
-.action-btn{
-  background: rgba(255,255,255,.70) !important;
-  border: 1px solid rgba(15,23,42,.08) !important;
-  backdrop-filter: blur(12px);
-}
-.action-btn:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 18px 50px rgba(2,6,23,.14), 0 0 34px rgba(124,58,237,.20);
-}
-.action-btn.is-on{
-  background: linear-gradient(135deg, rgba(124,58,237,.16), rgba(37,99,235,.10)) !important;
-  border: 1px solid rgba(124,58,237,.22) !important;
-  box-shadow: 0 18px 52px rgba(124,58,237,.18);
-}
-
-/* KPI progress glow stronger */
-.metric-card .progress-bar{ background: rgba(15,23,42,.08) !important; }
-.progress-green{ box-shadow: 0 0 18px rgba(34,197,94,.28); }
-.progress-blue{  box-shadow: 0 0 18px rgba(37,99,235,.28); }
-.progress-yellow{box-shadow: 0 0 18px rgba(245,158,11,.30); }
-.progress-purple{box-shadow: 0 0 18px rgba(124,58,237,.30); }
-
-/* subtle animated neon grain */
-@keyframes neonFloat { 0%{ transform: translateY(0) } 50%{ transform: translateY(-6px) } 100%{ transform: translateY(0) } }
-.brand-accent{ animation: neonFloat 4s ease-in-out infinite; }
+div[data-testid="stToast"]{display:none !important;}
 
 </style>
 """
@@ -1475,54 +1111,6 @@ def _parse_nnf(root: ET.Element) -> str | None:
             return t
     return None
 
-
-def _to_float_safe(x: str | None) -> float:
-    try:
-        return float(x) if x not in (None, "") else 0.0
-    except Exception:
-        return 0.0
-
-def _sum_taxes_from_xml(xml_bytes: bytes) -> tuple[float, float, float]:
-    """
-    Soma ICMS, PIS e COFINS por XML (NFe/NFCe).
-    Preferência: totais em <total><ICMSTot> (mais confiável).
-    Fallback: soma por item (<det>).
-    """
-    try:
-        root = ET.fromstring(xml_bytes)
-    except Exception:
-        return (0.0, 0.0, 0.0)
-
-    # Totais do documento
-    vICMS = _find_text(root, ".//{*}total/{*}ICMSTot/{*}vICMS")
-    vPIS = _find_text(root, ".//{*}total/{*}ICMSTot/{*}vPIS")
-    vCOFINS = _find_text(root, ".//{*}total/{*}ICMSTot/{*}vCOFINS")
-
-    if any(x not in (None, "") for x in (vICMS, vPIS, vCOFINS)):
-        return (_to_float_safe(vICMS), _to_float_safe(vPIS), _to_float_safe(vCOFINS))
-
-    # Fallback: soma por item
-    icms = pis = cofins = 0.0
-    for det in root.findall(".//{*}det"):
-        icms_node = det.find(".//{*}imposto/{*}ICMS")
-        if icms_node is not None:
-            for el in icms_node.iter():
-                if _local(el.tag) == "vICMS" and el.text:
-                    icms += _to_float_safe(el.text)
-        pis_node = det.find(".//{*}imposto/{*}PIS")
-        if pis_node is not None:
-            for el in pis_node.iter():
-                if _local(el.tag) == "vPIS" and el.text:
-                    pis += _to_float_safe(el.text)
-        cof_node = det.find(".//{*}imposto/{*}COFINS")
-        if cof_node is not None:
-            for el in cof_node.iter():
-                if _local(el.tag) == "vCOFINS" and el.text:
-                    cofins += _to_float_safe(el.text)
-
-    return (icms, pis, cofins)
-
-
 def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
     """
     Extrai itens (det) e IBS/CBS:
@@ -1544,17 +1132,14 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
     for det in dets:
         xprod = _find_text(det, ".//{*}prod/{*}xProd") or ""
         ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
-        # Se não existir IBSCBS (ex.: NFC-e modelo 65 hoje), ainda exibimos o item
-        # e seguimos com "Valor da operação" via vProd.
+        if ibscbs is None:
+            # alguns XML podem não ter IBSCBS -> ignora item
+            continue
 
-        cclass = (_find_text(ibscbs, ".//{*}cClassTrib") if ibscbs is not None else "") or ""
-        vbc = _find_text(ibscbs, ".//{*}vBC") if ibscbs is not None else None
-        vibs = _find_text(ibscbs, ".//{*}vIBS") if ibscbs is not None else None
-        vcbs = _find_text(ibscbs, ".//{*}vCBS") if ibscbs is not None else None
-        # fallback comum em NF-e/NFC-e: vProd por item
-        vprod = _find_text(det, ".//{*}prod/{*}vProd")
-        if (vbc is None or vbc == "") and vprod not in (None, ""):
-            vbc = vprod
+        cclass = _find_text(ibscbs, ".//{*}cClassTrib") or ""
+        vbc = _find_text(ibscbs, ".//{*}vBC")
+        vibs = _find_text(ibscbs, ".//{*}vIBS")
+        vcbs = _find_text(ibscbs, ".//{*}vCBS")
 
         def _to_float(x: str | None):
             try:
@@ -1567,7 +1152,7 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
         vcbs_f = _to_float(vcbs)
 
         # Fonte do valor (base)
-        fonte = ("IBSCBS/vBC" if ibscbs is not None else "prod/vProd") if vbc_f is not None else ""
+        fonte = "IBSCBS/vBC" if vbc_f is not None else ""
 
         rows.append(
             {
@@ -1592,7 +1177,7 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     """
     Abre o template e grava df na aba LANCAMENTOS, acrescentando linhas.
 
-    # ✅ O que este writer garante:
+    ✅ O que este writer garante:
       - Encontra a linha correta de cabeçalhos mesmo que o layout mude (ex.: cabeçalho na linha 2).
       - Escreve nos campos de entrada (Data, Numero, Item/Serviço, etc.).
       - COPIA fórmulas/estilos da primeira linha-modelo de dados para todas as novas linhas,
@@ -1728,130 +1313,25 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 st.markdown(dedent("""
 <div class="topbar">
   <div class="brand">
-    <div class="brand-badge" aria-hidden="true">
+<div class="brand-badge" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none">
-        <path d="M12 2l7 4v6c0 5-3.2 9.4-7 10-3.8-.6-7-5-7-10V6l7-4z" stroke="#0f172a" stroke-width="1.8" />
-        <path d="M9.2 12.2l1.9 1.9 3.8-4.2" stroke="#0f172a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="#1f2937" stroke-width="1.7"/>
+        <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="#1f2937" stroke-width="1.7"/>
+        <path d="M8 12h8M8 16h8" stroke="#1f2937" stroke-width="1.7" stroke-linecap="round"/>
       </svg>
-    </div>
-    <div>
-      <div class="brand-line">
-        <h1>Auditor Fiscal</h1>
-        <span class="brand-accent" aria-hidden="true"></span>
-      </div>
-      <div class="sub">Conferência inteligente SEFAZ x Fiscal ADM x Fiscal Flex</div>
-    </div>
+</div>
+<div>
+      <h1>Extrator XML - IBS/CBS</h1>
+<div class="sub">Visualização de dados fiscais da reforma tributária</div>
+</div>
   </div>
 
-  <div class="status-pill ok" title="Status do sistema">
-    <span class="status-dot"></span>
-    Sistema Operacional
+  <div class="status-pill">
+<span class="status-dot"></span>
+    Pronto para análise
   </div>
 </div>
 """), unsafe_allow_html=True)
-
-
-# =============================
-# Ações rápidas (interativas)
-# =============================
-if "show_tour" not in st.session_state:
-    st.session_state.show_tour = False
-if "presentation_mode" not in st.session_state:
-    st.session_state.presentation_mode = True
-
-
-# Helper p/ query params (compatível com versões diferentes do Streamlit)
-def _qp_get(key: str, default=None):
-    try:
-        qp = st.query_params
-        val = qp.get(key, default)
-    except Exception:
-        qp = st.experimental_get_query_params()
-        val = qp.get(key, [default])
-    if isinstance(val, (list, tuple)):
-        return val[0] if val else default
-    return val if val is not None else default
-
-def _qp_set(**params):
-    # remove chaves None/"" para não poluir a URL
-    clean = {k: v for k, v in params.items() if v not in (None, "")}
-    try:
-        st.query_params.clear()
-        for k, v in clean.items():
-            st.query_params[k] = v
-    except Exception:
-        st.experimental_set_query_params(**clean)
-
-current_kpi = str(_qp_get("kpi", "all") or "all").lower().strip()
-if current_kpi not in ("all", "ibs", "cbs", "cred", "total"):
-    current_kpi = "all"
-
-action = str(_qp_get("action", "") or "").lower().strip()
-
-# Dispara ações via URL e limpa o parâmetro depois (evita loop)
-if action in ("tour", "recalc", "present"):
-    if action == "tour":
-        st.session_state.show_tour = not st.session_state.show_tour
-        st.toast("Tour atualizado ✨")
-    elif action == "present":
-        st.session_state.presentation_mode = not st.session_state.presentation_mode
-        st.toast("Modo apresentação alternado 🎛️")
-    elif action == "recalc":
-        st.toast("Recalculando…")
-        time.sleep(0.15)
-    # mantém o KPI atual na URL e remove action
-    _qp_set(kpi=None if current_kpi=="all" else current_kpi)
-    st.rerun()
-
-# =============================
-# Ações rápidas — estilo premium (sem botões pretos)
-# =============================
-def _qs(action_name: str):
-    q = {}
-    if current_kpi != "all":
-        q["kpi"] = current_kpi
-    q["action"] = action_name
-    return "?" + urllib.parse.urlencode(q)
-
-st.markdown(f"""
-<div class="actionbar">
-  <div class="actionbar-left">
-    <a class="action-btn {'is-on' if st.session_state.get('show_tour') else ''}" href="{_qs('tour')}" title="Guia rápido para apresentação">
-      <span class="btn-ico">🧭</span> <span>Tour</span>
-    </a>
-    <a class="action-btn ghost" href="{_qs('recalc')}" title="Reprocessar e atualizar os totais/alertas">
-      <span class="btn-ico">🔄</span> <span>Recalcular</span>
-    </a>
-    <a class="action-btn {'is-on' if st.session_state.get('presentation_mode') else ''}" href="{_qs('present')}" title="Layout mais limpo para reunião">
-      <span class="btn-ico">🎤</span> <span>Apresentação</span>
-      <span class="btn-pill">{'ON' if st.session_state.get('presentation_mode') else 'OFF'}</span>
-    </a>
-  </div>
-
-  <div class="actionbar-right">
-    <div class="action-hint">
-      <strong>Dica:</strong> clique em um KPI (IBS/CBS/Créditos/ICMS) para filtrar • use a busca para localizar itens.
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-if st.session_state.show_tour:
-    with st.expander("🧭 Tour rápido para apresentação (clique para abrir)", expanded=True):
-        st.markdown(
-            """
-            **Como conduzir a demo em 60 segundos**
-            1. **Upload** de XML/ZIP na lateral → o painel recalcula automaticamente.
-            2. **KPIs** (no topo) → clique para filtrar e provar consistência por categoria.
-            3. **Alertas** → mostram arquivos com problemas e onde corrigir.
-            4. **Tabela premium** → busca + filtros + exportação para Excel.
-
-            **Perguntas que o cliente costuma fazer**
-            - “De onde veio esse valor?” → coluna **Fonte do valor** + link/arquivo.
-            - “Quais notas deram problema?” → seção **Arquivos com problemas**.
-            """
-        )
-
-
 
 # Sidebar: uploads
 with st.sidebar:
@@ -1942,11 +1422,6 @@ if template_bytes is None:
 rows_all: list[dict] = []
 errors: list[str] = []
 
-# Totais por XML (ICMS/PIS/COFINS)
-total_icms_xml = 0.0
-total_pis_xml = 0.0
-total_cofins_xml = 0.0
-
 if xml_files:
     # Mostra spinner enquanto processa uploads (XML/ZIP)
     spinner_placeholder.markdown(SPINNER_HTML, unsafe_allow_html=True)
@@ -1954,8 +1429,6 @@ if xml_files:
     for f in xml_files:
         try:
             b = f.read()
-            # soma ICMS/PIS/COFINS do XML/ZIP
-            
             if f.name.lower().endswith(".zip"):
                 with zipfile.ZipFile(io.BytesIO(b)) as z:
                     xml_names = [n for n in z.namelist() if n.lower().endswith(".xml")]
@@ -1964,22 +1437,14 @@ if xml_files:
                         continue
                     for xn in xml_names:
                         xb = z.read(xn)
-                        ic, pi, co = _sum_taxes_from_xml(xb)
-                        total_icms_xml += ic
-                        total_pis_xml += pi
-                        total_cofins_xml += co
                         rows = _parse_items_from_xml(xb, f"{f.name}:{xn}")
                         if not rows:
-                            errors.append(f"{f.name}:{xn}: não encontrei itens no XML")
+                            errors.append(f"{f.name}:{xn}: não encontrei itens com IBSCBS")
                         rows_all.extend(rows)
             else:
-                ic, pi, co = _sum_taxes_from_xml(b)
-                total_icms_xml += ic
-                total_pis_xml += pi
-                total_cofins_xml += co
                 rows = _parse_items_from_xml(b, f.name)
                 if not rows:
-                    errors.append(f"{f.name}: não encontrei itens no XML")
+                    errors.append(f"{f.name}: não encontrei itens com IBSCBS")
                 rows_all.extend(rows)
         except Exception as e:
             errors.append(f"{f.name}: erro ao ler ({e})")
@@ -2099,11 +1564,7 @@ base_cbs = float(df["Valor da operação"].fillna(0).sum()) if (not df.empty and
 # Totais exibidos nos cards = soma das bases
 ibs_total = round(base_ibs, 2)
 cbs_total = round(base_cbs, 2)
-total_tributos = round(total_icms_xml, 2)
-
-# Totais novos (painéis)
-total_pis = round(total_pis_xml, 2)
-total_cofins = round(total_cofins_xml, 2)
+total_tributos = round(base_ibs + base_cbs, 2)
 
 # Créditos: 1% sobre UMA base (IBS ou CBS)
 creditos_total = round(base_ibs * 0.01, 2)
@@ -2125,23 +1586,17 @@ if selected_kpi not in ("all", "ibs", "cbs", "cred", "total"):
     selected_kpi = "all"
 
 
-
-max_kpi = max(float(ibs_total or 0), float(cbs_total or 0), float(creditos_total or 0), float(total_tributos or 0), 1e-9)
-def _pct(v):
-    v = float(v or 0)
-    return f"{max(0.0, min(1.0, v/max_kpi))*100:.1f}%"
-
 st.markdown(
     f"""
 <div class="kpi-grid">
   <a class="kpi-link" href="?kpi=ibs">
-    <div class="metric-card metric-card-blue {'is-active' if selected_kpi=='ibs' else ''}" style="--w:{_pct(ibs_total)};">
+    <div class="kpi kpi-ibs {'is-active' if selected_kpi=='ibs' else ''}">
       <div class="kpi-head">
         <div>
-          <p class="metric-title">IBS Total</p>
-          <p class="metric-subtitle">• Alíquota {ALIQUOTA_IBS_TEXTO}</p>
+          <div class="label">IBS Total</div>
+          <div class="pill">↗ Alíquota {ALIQUOTA_IBS_TEXTO}</div>
         </div>
-        <div class="metric-icon" aria-hidden="true">
+        <div class="kpi-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M7 17V7" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
             <path d="M7 17h10" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
@@ -2149,40 +1604,38 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="metric-value">{money(ibs_total)}</div>
-      <p class="metric-description">Soma das bases IBS (XML)</p>
-      <div class="progress-bar"><div class="progress-fill progress-blue"></div></div>
+      <div class="value">{money(ibs_total)}</div>
+      <div class="sub">Soma das bases IBS (XML)</div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cbs">
-    <div class="metric-card metric-card-green {'is-active' if selected_kpi=='cbs' else ''}" style="--w:{_pct(cbs_total)};">
+    <div class="kpi kpi-cbs {'is-active' if selected_kpi=='cbs' else ''}">
       <div class="kpi-head">
         <div>
-          <p class="metric-title">CBS Total</p>
-          <p class="metric-subtitle">• Alíquota {ALIQUOTA_CBS_TEXTO}</p>
+          <div class="label">CBS Total</div>
+          <div class="pill">↗ Alíquota {ALIQUOTA_CBS_TEXTO}</div>
         </div>
-        <div class="metric-icon" aria-hidden="true">
+        <div class="kpi-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M8 7h8M8 12h8M8 17h8" stroke="#16a34a" stroke-width="2" stroke-linecap="round"/>
             <path d="M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" stroke="#16a34a" stroke-width="2"/>
           </svg>
         </div>
       </div>
-      <div class="metric-value">{money(cbs_total)}</div>
-      <p class="metric-description">Soma das bases CBS (XML)</p>
-      <div class="progress-bar"><div class="progress-fill progress-green"></div></div>
+      <div class="value">{money(cbs_total)}</div>
+      <div class="sub">Soma das bases CBS (XML)</div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cred">
-    <div class="metric-card metric-card-yellow {'is-active' if selected_kpi=='cred' else ''}" style="--w:{_pct(creditos_total)};">
+    <div class="kpi kpi-cred {'is-active' if selected_kpi=='cred' else ''}">
       <div class="kpi-head">
         <div>
-          <p class="metric-title">Créditos</p>
-          <p class="metric-subtitle">• IBS + CBS</p>
+          <div class="label">Créditos</div>
+          <div class="pill">↗ IBS + CBS</div>
         </div>
-        <div class="metric-icon" aria-hidden="true">
+        <div class="kpi-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M7 12h10" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
             <path d="M12 7v10" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
@@ -2190,20 +1643,19 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="metric-value">{money(creditos_total)}</div>
-      <p class="metric-description">Somatório de vIBS + vCBS</p>
-      <div class="progress-bar"><div class="progress-fill progress-yellow"></div></div>
+      <div class="value">{money(creditos_total)}</div>
+      <div class="sub">Somatório de vIBS + vCBS</div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=total">
-    <div class="metric-card metric-card-purple {'is-active' if selected_kpi=='total' else ''}" style="--w:{_pct(total_tributos)};">
+    <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}">
       <div class="kpi-head">
         <div>
-          <p class="metric-title">ICMS Total</p>
-          <p class="metric-subtitle">• ICMS</p>
+          <div class="label">Total Tributos</div>
+          <div class="pill">↗ Consolidado</div>
         </div>
-        <div class="metric-icon" aria-hidden="true">
+        <div class="kpi-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M7 8h10M7 12h10M7 16h10" stroke="#a855f7" stroke-width="2" stroke-linecap="round"/>
             <path d="M9 3h6v3H9z" stroke="#a855f7" stroke-width="2"/>
@@ -2211,9 +1663,8 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="metric-value">{money(total_tributos)}</div>
-      <p class="metric-description">Soma do ICMS (XML)</p>
-      <div class="progress-bar"><div class="progress-fill progress-purple"></div></div>
+      <div class="value">{money(total_tributos)}</div>
+      <div class="sub">IBS base + CBS base</div>
     </div>
   </a>
 </div>
@@ -2224,43 +1675,55 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
-
-# Painéis (no estilo dos seus Tax Cards)
+# Painéis (estilo Figma) — Débitos vs Créditos
 c1, c2 = st.columns(2, gap="large")
-pis_deb = float(total_pis or 0.0)
-cof_deb = float(total_cofins or 0.0)
-pis_cred = 0.0
-cof_cred = 0.0
+ibs_deb = float(ibs_total or 0.0)
+cbs_deb = float(cbs_total or 0.0)
+ibs_cred = 0.0
+cbs_cred = 0.0
+
+def _bar_width(val, vmax):
+    if vmax <= 0:
+        return "0%"
+    return f"{max(0.0, min(1.0, val / vmax)) * 100:.1f}%"
+
+max_ibs = max(ibs_deb, ibs_cred, 1e-9)
+max_cbs = max(cbs_deb, cbs_cred, 1e-9)
 
 with c1:
     st.markdown(
         f"""
-<div class="tax-card">
-  <div class="tax-header">
-    <div style="display:flex; gap:12px;">
-      <div class="tax-icon-wrapper" aria-hidden="true">📊</div>
-      <div>
-        <h3 class="tax-title">PIS Total</h3>
-        <p class="tax-subtitle">Programa de Integração Social (PIS)</p>
-      </div>
-    </div>
-    <div class="status-badge"><span class="status-dot"></span>Ativo</div>
+<div class="card ibs-panel">
+  <div class="panel-title">
+<div class="panel-left">
+<div class="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M4 18V6" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
+        <path d="M4 18h16" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
+        <path d="M8 14l3-3 3 2 4-5" stroke="#2563eb" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+</div>
+<div>
+      <h3>IBS - Débitos vs Créditos</h3>
+<div class="hint">Imposto sobre Bens e Serviços (Estados/Municípios)</div>
+</div>
+</div>
+<span class="badge on">Ativo</span>
   </div>
 
-  <div class="tax-row">
-    <span class="tax-row-label">Débitos</span>
-    <span class="tax-row-value">{money(pis_deb)}</span>
-  </div>
-  <div class="tax-row">
-    <span class="tax-row-label">Créditos</span>
-    <span class="tax-row-value" style="color:#ef4444;">-{money(pis_cred)}</span>
+  <div class="bar-row">
+<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(ibs_deb)}</span></div>
+<div class="bar-track"><div class="bar-fill ibs" style="width:{_bar_width(ibs_deb, max_ibs)}"></div></div>
   </div>
 
-  <div class="tax-divider"></div>
-  <div class="tax-total">
-    <span class="tax-total-label">Total</span>
-    <span class="tax-total-value">{money(pis_deb - pis_cred)}</span>
+  <div class="bar-row">
+<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(ibs_cred)}</span></div>
+<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(ibs_cred, max_ibs)}"></div></div>
+  </div>
+
+  <div class="bar-foot green">
+    <strong>Saldo a Recolher</strong>
+<span class="badge-money" style="color:#2563eb;">{money(ibs_deb - ibs_cred)}</span>
   </div>
 </div>
 """,
@@ -2270,134 +1733,55 @@ with c1:
 with c2:
     st.markdown(
         f"""
-<div class="tax-card">
-  <div class="tax-header">
-    <div style="display:flex; gap:12px;">
-      <div class="tax-icon-wrapper" aria-hidden="true">📊</div>
-      <div>
-        <h3 class="tax-title">COFINS Total</h3>
-        <p class="tax-subtitle">Contribuição para o Financiamento da Seguridade Social (COFINS)</p>
-      </div>
-    </div>
-    <div class="status-badge"><span class="status-dot"></span>Ativo</div>
+<div class="card cbs-panel">
+  <div class="panel-title">
+<div class="panel-left">
+<div class="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M4 18V6" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
+        <path d="M4 18h16" stroke="#334155" stroke-width="1.7" stroke-linecap="round"/>
+        <path d="M8 14l3-3 3 2 4-5" stroke="#16a34a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+</div>
+<div>
+      <h3>CBS - Débitos vs Créditos</h3>
+<div class="hint">Contribuição sobre Bens e Serviços (União)</div>
+</div>
+</div>
+<span class="badge on" style="background:#ecfdf3;border-color:#dcfce7;color:#166534;">Ativo</span>
   </div>
 
-  <div class="tax-row">
-    <span class="tax-row-label">Débitos</span>
-    <span class="tax-row-value">{money(cof_deb)}</span>
-  </div>
-  <div class="tax-row">
-    <span class="tax-row-label">Créditos</span>
-    <span class="tax-row-value" style="color:#ef4444;">-{money(cof_cred)}</span>
+  <div class="bar-row">
+<div class="bar-label"><span>Débitos</span><span class="badge-money">{money(cbs_deb)}</span></div>
+<div class="bar-track"><div class="bar-fill cbs" style="width:{_bar_width(cbs_deb, max_cbs)}"></div></div>
   </div>
 
-  <div class="tax-divider"></div>
-  <div class="tax-total">
-    <span class="tax-total-label">Total</span>
-    <span class="tax-total-value">{money(cof_deb - cof_cred)}</span>
+  <div class="bar-row">
+<div class="bar-label"><span>Créditos</span><span class="badge-money">-{money(cbs_cred)}</span></div>
+<div class="bar-track"><div class="bar-fill cred" style="width:{_bar_width(cbs_cred, max_cbs)}"></div></div>
+  </div>
+
+  <div class="bar-foot">
+    <strong>Saldo a Recolher</strong>
+<span class="badge-money" style="color:#16a34a;">{money(cbs_deb - cbs_cred)}</span>
   </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
+
 
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-# Alerts (premium)
+# Alerts
 if errors:
-    st.markdown(
-        f"""
-<div class="alert-warning">
-  <div class="alert-icon">⚠️</div>
-  <div class="alert-text">
-    <strong>Atenção:</strong> {len(errors)} arquivo(s) tiveram problemas. Abra a lista abaixo para detalhes.
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    with st.expander(f"⚠️ Alguns arquivos tiveram problemas ({len(errors)})", expanded=False):
-        for e in errors[:50]:
-            safe = html.escape(str(e))
-            # separa nome:mensagem quando dá
-            if ": " in safe:
-                name, msg = safe.split(": ", 1)
-            elif ":" in safe:
-                name, msg = safe.split(":", 1)
-            else:
-                name, msg = safe, "erro"
-            st.markdown(
-                f"""
-<div class="problem-item">
-  <span class="problem-icon">📄</span>
-  <div>
-    <span class="problem-filename">{name}</span>
-    <span class="problem-error">: {msg}</span>
-  </div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-
-# ---------- Insights (interação) ----------
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown("### ✨ Insights do Auditor")
-if df.empty:
-    st.info("Envie XML(s) para gerar insights automáticos.")
-else:
-    top_n = st.slider("Quantidade de itens para destacar", min_value=5, max_value=50, value=10, step=5)
-    t1, t2, t3 = st.tabs(["Resumo", "Top itens", "Anomalias"])
-
-    with t1:
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            _col_arq = None
-            for cand in ["Arquivo", "ARQUIVO", "arquivo"]:
-                if cand in df.columns:
-                    _col_arq = cand
-                    break
-            _qtd_arq = int(df[_col_arq].nunique()) if _col_arq else 0
-            st.metric("Notas/Arquivos", f"{_qtd_arq:,}".replace(",", "."))
-        with c2:
-            st.metric("Itens", f"{len(df):,}".replace(",", "."))
-        with c3:
-            base_total = df.get("Valor Operação", pd.Series(dtype=float))
-            base_total = pd.to_numeric(base_total, errors="coerce").fillna(0).sum()
-            st.metric("Valor total (itens)", money(base_total))
-
-        st.caption("Dica: clique em um KPI acima para filtrar a tabela. Use a busca para localizar itens instantaneamente.")
-
-    with t2:
-        # Top itens por valor
-        temp = df.copy()
-        temp["__valor"] = pd.to_numeric(temp.get("Valor Operação", 0), errors="coerce").fillna(0)
-        grp = temp.groupby("Item/Serviço", dropna=False)["__valor"].sum().sort_values(ascending=False).head(top_n)
-        st.bar_chart(grp)
-
-    with t3:
-        temp = df.copy()
-        temp["__valor"] = pd.to_numeric(temp.get("Valor Operação", 0), errors="coerce").fillna(0)
-        temp["__vibs"] = pd.to_numeric(temp.get("vIBS", 0), errors="coerce").fillna(0)
-        temp["__vcbs"] = pd.to_numeric(temp.get("vCBS", 0), errors="coerce").fillna(0)
-
-        a1 = temp[(temp["__valor"] > 0) & (temp["__vibs"] == 0) & (temp["__vcbs"] == 0)].copy()
-        a2 = temp[temp.get("cClassTrib", "").astype(str).str.strip().eq("")].copy() if "cClassTrib" in temp.columns else temp.iloc[0:0].copy()
-
-        colA, colB = st.columns(2)
-        with colA:
-            st.markdown("**Possíveis itens sem IBS/CBS**")
-            st.caption("Valor > 0 e vIBS/vCBS = 0")
-            st.dataframe(a1.head(top_n), use_container_width=True, hide_index=True)
-        with colB:
-            st.markdown("**Itens sem cClassTrib**")
-            st.caption("Pode indicar XML incompleto ou schema diferente")
-            st.dataframe(a2.head(top_n), use_container_width=True, hide_index=True)
-
+    st.warning("Alguns arquivos tiveram problemas:")
+    for e in errors[:10]:
+        st.write("•", e)
+    if len(errors) > 10:
+        st.caption(f"... e mais {len(errors)-10} itens")
 
 # ---------- Filters + table ----------
-
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("## Itens do Documento")
 st.caption("Detalhamento dos itens extraídos do XML (inclui base vBC e valores de IBS/CBS quando presentes).")
