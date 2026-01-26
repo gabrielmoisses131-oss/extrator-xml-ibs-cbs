@@ -1693,8 +1693,8 @@ st.markdown(
     <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}">
       <div class="kpi-head">
         <div>
-          <div class="label">Total Tributos</div>
-          <div class="pill">↗ Consolidado</div>
+          <div class="label">ICMS Total</div>
+          <div class="pill">↗ ICMS</div>
         </div>
         <div class="kpi-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
