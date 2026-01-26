@@ -1401,7 +1401,7 @@ st.markdown("""
   </div>
 
   <div class="info-banner">
-    ⚡ Envie uma <b>planilha modelo</b> (.xlsx) na lateral para inserir os dados na aba <b>LANÇAMENTOS</b> mantendo suas fórmulas.
+    ⚡ Envie seus <b>XMLs</b> na lateral para inserir os dados na aba <b>LANÇAMENTOS</b> mantendo suas fórmulas.
   </div>
 </div>
 """, unsafe_allow_html=True)
