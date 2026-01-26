@@ -17,30 +17,6 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-# -----------------------------
-# FORCE FAVICON (safe, no f-string JS)
-# -----------------------------
-def _force_favicon():
-    components.html(
-        '''
-        <script>
-        (function(){
-          try {
-            var link = window.parent.document.querySelector("link[rel~='icon']");
-            if(!link){
-              link = window.parent.document.createElement("link");
-              link.rel = "icon";
-              window.parent.document.head.appendChild(link);
-            }
-            link.type = "image/png";
-            link.href = "assets/favicon_v2.png?v=3";
-          } catch(e) {}
-        })();
-        </script>
-        ''',
-        height=0
-    )
-
 import html
 import time
 from openpyxl import load_workbook
@@ -49,7 +25,7 @@ from textwrap import dedent
 # -----------------------------
 # Page config + CSS (Figma-like)
 # -----------------------------
-st.set_page_config(page_title="Extrator XML - IBS/CBS", page_icon="assets/favicon_v2.png", layout="wide")
+st.set_page_config(page_title="Extrator XML - IBS/CBS", layout="wide")
 
 CSS = """
 <style>
@@ -1788,11 +1764,9 @@ base_cbs = float(df["Valor da operação"].fillna(0).sum()) if (not df.empty and
 ibs_total = round(base_ibs, 2)
 cbs_total = round(base_cbs, 2)
 total_tributos = round(icms_total_all, 2)
-
-# Créditos: 1% sobre UMA base (IBS ou CBS)
-creditos_total = round(base_ibs * 0.01, 2)
-
-
+# Créditos: Totais reais do XML (somatório de vIBS e vCBS)
+creditos_ibs_total = round(float(df["vIBS"].fillna(0).sum()) if (not df.empty and "vIBS" in df.columns) else 0.0, 2)
+creditos_cbs_total = round(float(df["vCBS"].fillna(0).sum()) if (not df.empty and "vCBS" in df.columns) else 0.0, 2)
 # --- KPI clique (filtro via query param) ---
 try:
     _qp = st.query_params.get("kpi", "all")
@@ -1866,8 +1840,9 @@ st.markdown(
           </svg>
         </div>
       </div>
-      <div class="value">{money(creditos_total)}</div>
-      <div class="sub">Somatório de vIBS + vCBS</div>
+      <div class="sub" style="margin-top:6px; font-weight:900; color:#f59e0b;">IBS: {money(creditos_ibs_total)}</div>
+      <div class="sub" style="margin-top:6px; font-weight:900; color:#f59e0b;">CBS: {money(creditos_cbs_total)}</div>
+      <div class="sub" style="margin-top:8px;">Totais extraídos de <b>vIBS</b> e <b>vCBS</b> (XML)</div>
     </div>
   </a>
 
