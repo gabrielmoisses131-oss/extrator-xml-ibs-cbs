@@ -31,6 +31,11 @@ CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root{
+  --neon1:#7c3aed;
+  --neon2:#22d3ee;
+  --neon3:#22c55e;
+  --glow: 0 0 0 1px rgba(124,58,237,.18), 0 12px 50px rgba(124,58,237,.16), 0 10px 30px rgba(2,6,23,.08);
+
   --card: rgba(255,255,255,.92);
   --card2: rgba(255,255,255,.82);
   --ink: #0f172a;
@@ -97,7 +102,7 @@ section[data-testid="stSidebar"] small{ color: rgba(255,255,255,.65) !important;
   background: linear-gradient(180deg, var(--card), var(--card2));
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--glow);
   padding: 18px 20px;
   backdrop-filter: blur(10px);
 }
@@ -105,16 +110,29 @@ section[data-testid="stSidebar"] small{ color: rgba(255,255,255,.65) !important;
 
 /* Top header (match premium mock) */
 .topbar{
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
-  border: 1px solid rgba(15,23,42,.10);
+  background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,255,255,.90));
+  border: 1px solid rgba(124,58,237,.18);
   border-radius: 18px;
-  box-shadow: var(--shadow);
-  padding: 16px 18px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap: 16px;
+  padding: 18px 18px;
+  box-shadow: var(--glow);
+  display:flex; align-items:center; justify-content:space-between;
+  gap: 12px;
+  position: relative;
+  overflow:hidden;
 }
+.topbar:before{
+  content:'';
+  position:absolute; inset:0;
+  background: radial-gradient(800px 200px at 15% 0%, rgba(124,58,237,.18), transparent 60%),
+              radial-gradient(700px 200px at 85% 0%, rgba(34,211,238,.14), transparent 55%);
+  pointer-events:none;
+}
+.brand-chip{display:flex;align-items:center;gap:12px;position:relative;z-index:1;}
+.brand-icon{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, rgba(124,58,237,.22), rgba(34,211,238,.18));border:1px solid rgba(124,58,237,.22);box-shadow:0 0 0 1px rgba(255,255,255,.55) inset, 0 10px 30px rgba(124,58,237,.12);} 
+.brand-title{font-size:20px;font-weight:800;letter-spacing:-.2px;margin:0;display:flex;align-items:center;gap:10px;}
+.brand-bar{width:54px;height:16px;border-radius:999px;background:linear-gradient(90deg, var(--neon1), #4f46e5, var(--neon2));box-shadow:0 0 18px rgba(124,58,237,.35);} 
+.brand-sub{margin:2px 0 0 0;color:var(--muted);font-size:13px;}
+
 .topbar .brand{ display:flex; align-items:center; gap: 12px; }
 .brand-badge{
   width: 44px;
@@ -130,19 +148,38 @@ section[data-testid="stSidebar"] small{ color: rgba(255,255,255,.65) !important;
 .brand-badge svg{ width: 22px; height: 22px; }
 .topbar h1{ margin:0; font-size: 1.45rem; font-weight: 900; color:#0f172a; }
 .topbar .sub{ margin-top:2px; font-size:.92rem; color:#64748b; }
-.status-pill{
-  display:inline-flex;
-  align-items:center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(15,23,42,.04);
-  border: 1px solid rgba(15,23,42,.08);
-  font-weight: 800;
-  color:#475569;
-  white-space: nowrap;
-}
+.status-pill{padding:8px 14px;border-radius:999px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(148,163,184,.45);background:rgba(255,255,255,.6);}
 .status-dot{ width:8px; height:8px; border-radius: 999px; background: #64748b; }
+.status-pill.ok{
+  background: rgba(34,197,94,.14);
+  border: 1px solid rgba(34,197,94,.28);
+  color: #16a34a;
+}
+.status-pill.ok .status-dot{
+  background:#22c55e;
+  box-shadow: 0 0 14px rgba(34,197,94,.65);
+}
+.brand-chip{
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: radial-gradient(circle at 30% 30%, rgba(34,211,238,.35), transparent 55%),
+              radial-gradient(circle at 70% 40%, rgba(124,58,237,.40), transparent 55%),
+              linear-gradient(135deg, rgba(124,58,237,.25), rgba(34,211,238,.18));
+  border: 1px solid rgba(124,58,237,.25);
+  box-shadow: 0 0 0 1px rgba(34,211,238,.10), 0 0 24px rgba(124,58,237,.20);
+  display:flex; align-items:center; justify-content:center;
+}
+.brand-chip svg{ width: 24px; height: 24px; color: #0f172a; }
+.title-row{ display:flex; align-items:center; gap:12px; }
+.title-accent{
+  width: 52px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--neon1), var(--neon2));
+  box-shadow: 0 0 22px rgba(124,58,237,.35);
+}
+
 
 .hr{ height:1px; background: rgba(15,23,42,.10); margin: 18px 0; }
 
@@ -449,6 +486,11 @@ section[data-testid="stSidebar"]:hover{
 
 /* ===== LOADER (UIVERSE SVG) – 4 CORES (IGUAL AOS CARDS) ===== */
 :root{
+  --neon1:#7c3aed;
+  --neon2:#22d3ee;
+  --neon3:#22c55e;
+  --glow: 0 0 0 1px rgba(124,58,237,.18), 0 12px 50px rgba(124,58,237,.16), 0 10px 30px rgba(2,6,23,.08);
+
   --ibs:#2563eb;   /* azul IBS */
   --cbs:#16a34a;   /* verde CBS */
   --cred:#f59e0b;  /* laranja Créditos */
@@ -1013,6 +1055,45 @@ div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !impo
 /* Remover qualquer overlay de “status”/toast do Streamlit */
 div[data-testid="stToast"]{display:none !important;}
 
+
+
+/* Action bar pills */
+.tip-pill{
+  margin-top: 6px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(124,58,237,.20);
+  color: var(--muted);
+  font-size: 12px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  box-shadow: 0 10px 24px rgba(2,6,23,.06);
+}
+
+/* Buttons (global) */
+div.stButton > button{
+  border-radius: 999px !important;
+  padding: 10px 16px !important;
+  background: rgba(255,255,255,.92) !important;
+  border: 1px solid rgba(148,163,184,.45) !important;
+  color: var(--ink) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 12px 28px rgba(2,6,23,.08);
+  transition: all .18s ease;
+}
+div.stButton > button:hover{
+  transform: translateY(-1px);
+  border-color: rgba(124,58,237,.35) !important;
+  box-shadow: var(--glow);
+}
+
+div.stButton > button:active{
+  transform: translateY(0px);
+}
+
+
 </style>
 """
 
@@ -1312,26 +1393,32 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 # -----------------------------
 st.markdown(dedent("""
 <div class="topbar">
-  <div class="brand">
-<div class="brand-badge" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M8 12h8M8 16h8" stroke="#1f2937" stroke-width="1.7" stroke-linecap="round"/>
-      </svg>
-</div>
-<div>
-      <h1>Extrator XML - IBS/CBS</h1>
-<div class="sub">Visualização de dados fiscais da reforma tributária</div>
-</div>
+  <div class="brand-chip">
+    <div class="brand-icon">🛡️</div>
+    <div>
+      <div class="brand-title">Auditor Fiscal <span class="brand-bar"></span></div>
+      <div class="brand-sub">Conferência inteligente SEFAZ × Fiscal ADM × Fiscal Flex</div>
+    </div>
   </div>
-
-  <div class="status-pill">
-<span class="status-dot"></span>
-    Pronto para análise
-  </div>
+  <div class="status-pill ok"><span class="status-dot"></span> Sistema Operacional</div>
 </div>
 """), unsafe_allow_html=True)
+
+# Action bar (interação)
+colA, colB, colC, colD = st.columns([1.1, 1.3, 1.6, 6])
+with colA:
+    if st.button("🧭 Tour", use_container_width=True):
+        st.toast("Tour ativado — siga as dicas na tela.")
+        st.session_state["__tour__"] = True
+with colB:
+    if st.button("🔄 Recalcular", use_container_width=True):
+        st.toast("Recalculando métricas…")
+        st.session_state["__recalc__"] = st.session_state.get("__recalc__", 0) + 1
+with colC:
+    st.toggle("Apresentação", value=st.session_state.get("present_mode", True), key="present_mode")
+with colD:
+    st.markdown('<div class="tip-pill">Dica: clique em um KPI para filtrar a tabela • use a busca para localizar itens.</div>', unsafe_allow_html=True)
+
 
 # Sidebar: uploads
 with st.sidebar:
