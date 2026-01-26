@@ -1337,6 +1337,46 @@ div[data-testid="stToggle"] label{
 .problem-filename{ color: rgba(37,99,235,1); font-size: 12px; font-weight: 900; }
 .problem-error{ color: var(--muted); font-size: 12px; }
 
+
+/* ===== Neon boost (premium glow) ===== */
+.metric-card{
+  background: rgba(255,255,255,.86) !important;
+  backdrop-filter: blur(14px);
+}
+.metric-card:hover{
+  box-shadow: 0 22px 70px rgba(2,6,23,.18), 0 0 0 1px rgba(15,23,42,.06) !important;
+}
+.metric-card-green:hover{ box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(34,197,94,.28) !important; }
+.metric-card-blue:hover{  box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(37,99,235,.28) !important; }
+.metric-card-yellow:hover{box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(245,158,11,.30) !important; }
+.metric-card-purple:hover{box-shadow: 0 26px 78px rgba(2,6,23,.18), 0 0 46px rgba(124,58,237,.30) !important; }
+
+.action-btn{
+  background: rgba(255,255,255,.70) !important;
+  border: 1px solid rgba(15,23,42,.08) !important;
+  backdrop-filter: blur(12px);
+}
+.action-btn:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 18px 50px rgba(2,6,23,.14), 0 0 34px rgba(124,58,237,.20);
+}
+.action-btn.is-on{
+  background: linear-gradient(135deg, rgba(124,58,237,.16), rgba(37,99,235,.10)) !important;
+  border: 1px solid rgba(124,58,237,.22) !important;
+  box-shadow: 0 18px 52px rgba(124,58,237,.18);
+}
+
+/* KPI progress glow stronger */
+.metric-card .progress-bar{ background: rgba(15,23,42,.08) !important; }
+.progress-green{ box-shadow: 0 0 18px rgba(34,197,94,.28); }
+.progress-blue{  box-shadow: 0 0 18px rgba(37,99,235,.28); }
+.progress-yellow{box-shadow: 0 0 18px rgba(245,158,11,.30); }
+.progress-purple{box-shadow: 0 0 18px rgba(124,58,237,.30); }
+
+/* subtle animated neon grain */
+@keyframes neonFloat { 0%{ transform: translateY(0) } 50%{ transform: translateY(-6px) } 100%{ transform: translateY(0) } }
+.brand-accent{ animation: neonFloat 4s ease-in-out infinite; }
+
 </style>
 """
 
@@ -2299,6 +2339,56 @@ if errors:
 """,
                 unsafe_allow_html=True,
             )
+
+
+# ---------- Insights (interação) ----------
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("### ✨ Insights do Auditor")
+if df.empty:
+    st.info("Envie XML(s) para gerar insights automáticos.")
+else:
+    top_n = st.slider("Quantidade de itens para destacar", min_value=5, max_value=50, value=10, step=5)
+    t1, t2, t3 = st.tabs(["Resumo", "Top itens", "Anomalias"])
+
+    with t1:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Notas/Arquivos", f"{df['Arquivo'].nunique():,}".replace(",", "."))
+        with c2:
+            st.metric("Itens", f"{len(df):,}".replace(",", "."))
+        with c3:
+            base_total = df.get("Valor Operação", pd.Series(dtype=float))
+            base_total = pd.to_numeric(base_total, errors="coerce").fillna(0).sum()
+            st.metric("Valor total (itens)", money(base_total))
+
+        st.caption("Dica: clique em um KPI acima para filtrar a tabela. Use a busca para localizar itens instantaneamente.")
+
+    with t2:
+        # Top itens por valor
+        temp = df.copy()
+        temp["__valor"] = pd.to_numeric(temp.get("Valor Operação", 0), errors="coerce").fillna(0)
+        grp = temp.groupby("Item/Serviço", dropna=False)["__valor"].sum().sort_values(ascending=False).head(top_n)
+        st.bar_chart(grp)
+
+    with t3:
+        temp = df.copy()
+        temp["__valor"] = pd.to_numeric(temp.get("Valor Operação", 0), errors="coerce").fillna(0)
+        temp["__vibs"] = pd.to_numeric(temp.get("vIBS", 0), errors="coerce").fillna(0)
+        temp["__vcbs"] = pd.to_numeric(temp.get("vCBS", 0), errors="coerce").fillna(0)
+
+        a1 = temp[(temp["__valor"] > 0) & (temp["__vibs"] == 0) & (temp["__vcbs"] == 0)].copy()
+        a2 = temp[temp.get("cClassTrib", "").astype(str).str.strip().eq("")].copy() if "cClassTrib" in temp.columns else temp.iloc[0:0].copy()
+
+        colA, colB = st.columns(2)
+        with colA:
+            st.markdown("**Possíveis itens sem IBS/CBS**")
+            st.caption("Valor > 0 e vIBS/vCBS = 0")
+            st.dataframe(a1.head(top_n), use_container_width=True, hide_index=True)
+        with colB:
+            st.markdown("**Itens sem cClassTrib**")
+            st.caption("Pode indicar XML incompleto ou schema diferente")
+            st.dataframe(a2.head(top_n), use_container_width=True, hide_index=True)
+
 
 # ---------- Filters + table ----------
 
