@@ -1554,7 +1554,7 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     """
     Abre o template e grava df na aba LANCAMENTOS, acrescentando linhas.
 
-    ✅ O que este writer garante:
+    # ✅ O que este writer garante:
       - Encontra a linha correta de cabeçalhos mesmo que o layout mude (ex.: cabeçalho na linha 2).
       - Escreve nos campos de entrada (Data, Numero, Item/Serviço, etc.).
       - COPIA fórmulas/estilos da primeira linha-modelo de dados para todas as novas linhas,
