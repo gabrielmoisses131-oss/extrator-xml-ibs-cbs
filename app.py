@@ -1013,41 +1013,46 @@ div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !impo
 /* Remover qualquer overlay de “status”/toast do Streamlit */
 div[data-testid="stToast"]{display:none !important;}
 
-/* ===== MICRO-INTERAÇÕES (premium) ===== */
 
-/* KPIs: ícone gira no hover */
-.kpi { will-change: transform; }
-.kpi .kpi-icon, .kpi .kpi-icon svg{
-  transition: transform .65s cubic-bezier(.34,1.56,.64,1), filter .35s ease;
+/* ===== MICRO-INTERAÇÕES (premium | gira e para) ===== */
+
+/* Transições base (efeito mola) */
+.kpi .kpi-icon,
+.kpi .kpi-icon svg,
+.card .icon,
+.card .icon svg {
+  transition:
+    transform 0.75s cubic-bezier(.22,1.28,.42,1),
+    filter 0.4s ease;
   will-change: transform;
 }
-.kpi:hover .kpi-icon{
-  transform: rotate(14deg) scale(1.14) !important;
-  filter: drop-shadow(0 0 14px rgba(99,102,241,.35)) !important;
-}
-.kpi:hover .kpi-icon svg{
-  transform: rotate(-8deg) scale(1.05) !important;
+
+/* Hover nos KPIs */
+.kpi:hover .kpi-icon {
+  transform: rotate(18deg) scale(1.15);
+  filter: drop-shadow(0 0 14px rgba(99,102,241,.35));
 }
 
-/* Painéis: ícone também interage */
-.card .icon, .card .icon svg{
-  transition: transform .65s cubic-bezier(.34,1.56,.64,1), filter .35s ease;
-  will-change: transform;
-}
-.card:hover .icon{
-  transform: rotate(10deg) scale(1.10) !important;
-  filter: drop-shadow(0 0 12px rgba(99,102,241,.25)) !important;
-}
-.card:hover .icon svg{
-  transform: rotate(-6deg) scale(1.04) !important;
+/* Hover nos painéis */
+.card:hover .icon {
+  transform: rotate(14deg) scale(1.12);
+  filter: drop-shadow(0 0 12px rgba(99,102,241,.25));
 }
 
-/* Barra interna: micro-zoom no hover */
+/* Estado normal (parado) */
+.kpi .kpi-icon,
+.card .icon {
+  transform: rotate(0deg) scale(1);
+}
+
+/* Micro movimento na barra */
 .card .bar-fill{
   transform-origin: left center;
   transition: transform .35s ease;
 }
-.card:hover .bar-fill{ transform: scaleX(1.03); }
+.card:hover .bar-fill{
+  transform: scaleX(1.03);
+}
 </style>
 """
 
