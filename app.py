@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 import pandas as pd
 import streamlit as st
+import urllib.parse
 import html
 import time
 from openpyxl import load_workbook
@@ -1063,6 +1064,72 @@ div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !impo
   box-shadow: 0 18px 50px rgba(2,6,23,.08);
 }
 
+
+/* Actionbar premium */
+.actionbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 14px;
+  margin: 8px 0 14px 0;
+}
+.actionbar-left{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.action-btn{
+  display:inline-flex;
+  align-items:center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: 13px;
+  text-decoration:none !important;
+  color: rgba(15,23,42,.92) !important;
+  background: rgba(255,255,255,.70);
+  border: 1px solid rgba(15,23,42,.10);
+  box-shadow: 0 18px 50px rgba(2,6,23,.10);
+  backdrop-filter: blur(10px);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.action-btn:hover{
+  transform: translateY(-2px);
+  border-color: rgba(124,58,237,.20);
+  box-shadow: 0 24px 64px rgba(124,58,237,.14), 0 18px 50px rgba(2,6,23,.10);
+}
+.action-btn .btn-ico{
+  width: 30px; height: 30px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius: 12px;
+  background: radial-gradient(circle at 30% 30%, rgba(124,58,237,.18), rgba(255,255,255,.55) 62%);
+  border: 1px solid rgba(124,58,237,.14);
+  box-shadow: 0 14px 34px rgba(124,58,237,.12);
+}
+.action-btn.ghost{
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(15,23,42,.08);
+}
+.action-btn.is-on{
+  border-color: rgba(124,58,237,.25);
+  box-shadow: 0 26px 70px rgba(124,58,237,.16), 0 18px 50px rgba(2,6,23,.10);
+}
+.action-btn .btn-pill{
+  margin-left: 2px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .4px;
+  background: rgba(124,58,237,.12);
+  border: 1px solid rgba(124,58,237,.18);
+  color: rgba(124,58,237,.95);
+}
+.actionbar-right{ flex: 1; display:flex; justify-content:flex-end; }
+
 /* Radios / toggles mais “premium” */
 div[data-testid="stToggle"] label{
   background: rgba(255,255,255,.75);
@@ -1453,24 +1520,82 @@ if "show_tour" not in st.session_state:
 if "presentation_mode" not in st.session_state:
     st.session_state.presentation_mode = True
 
-a1,a2,a3,a4 = st.columns([1.05, 1.05, 1.25, 3.65], vertical_alignment="center")
-with a1:
-    if st.button("🧭 Tour", help="Mostra um guia rápido para apresentação", use_container_width=True):
+
+# Helper p/ query params (compatível com versões diferentes do Streamlit)
+def _qp_get(key: str, default=None):
+    try:
+        qp = st.query_params
+        val = qp.get(key, default)
+    except Exception:
+        qp = st.experimental_get_query_params()
+        val = qp.get(key, [default])
+    if isinstance(val, (list, tuple)):
+        return val[0] if val else default
+    return val if val is not None else default
+
+def _qp_set(**params):
+    # remove chaves None/"" para não poluir a URL
+    clean = {k: v for k, v in params.items() if v not in (None, "")}
+    try:
+        st.query_params.clear()
+        for k, v in clean.items():
+            st.query_params[k] = v
+    except Exception:
+        st.experimental_set_query_params(**clean)
+
+current_kpi = str(_qp_get("kpi", "all") or "all").lower().strip()
+if current_kpi not in ("all", "ibs", "cbs", "cred", "total"):
+    current_kpi = "all"
+
+action = str(_qp_get("action", "") or "").lower().strip()
+
+# Dispara ações via URL e limpa o parâmetro depois (evita loop)
+if action in ("tour", "recalc", "present"):
+    if action == "tour":
         st.session_state.show_tour = not st.session_state.show_tour
         st.toast("Tour atualizado ✨")
-with a2:
-    if st.button("🔄 Recalcular", help="Reprocessa e atualiza os totais/alertas", use_container_width=True):
+    elif action == "present":
+        st.session_state.presentation_mode = not st.session_state.presentation_mode
+        st.toast("Modo apresentação alternado 🎛️")
+    elif action == "recalc":
         st.toast("Recalculando…")
-        time.sleep(0.25)
-        st.rerun()
-with a3:
-    st.session_state.presentation_mode = st.toggle("Modo apresentação", value=st.session_state.presentation_mode, help="Layout mais limpo para reunião", label_visibility="collapsed")
-with a4:
-    st.markdown(
-        '<div class="action-hint">Dica: clique em um KPI (IBS/CBS/Créditos/ICMS) para filtrar a tabela • use a busca para localizar itens instantaneamente.</div>',
-        unsafe_allow_html=True
-    )
+        time.sleep(0.15)
+    # mantém o KPI atual na URL e remove action
+    _qp_set(kpi=None if current_kpi=="all" else current_kpi)
+    st.rerun()
 
+# =============================
+# Ações rápidas — estilo premium (sem botões pretos)
+# =============================
+def _qs(action_name: str):
+    q = {}
+    if current_kpi != "all":
+        q["kpi"] = current_kpi
+    q["action"] = action_name
+    return "?" + urllib.parse.urlencode(q)
+
+st.markdown(f"""
+<div class="actionbar">
+  <div class="actionbar-left">
+    <a class="action-btn {'is-on' if st.session_state.get('show_tour') else ''}" href="{_qs('tour')}" title="Guia rápido para apresentação">
+      <span class="btn-ico">🧭</span> <span>Tour</span>
+    </a>
+    <a class="action-btn ghost" href="{_qs('recalc')}" title="Reprocessar e atualizar os totais/alertas">
+      <span class="btn-ico">🔄</span> <span>Recalcular</span>
+    </a>
+    <a class="action-btn {'is-on' if st.session_state.get('presentation_mode') else ''}" href="{_qs('present')}" title="Layout mais limpo para reunião">
+      <span class="btn-ico">🎤</span> <span>Apresentação</span>
+      <span class="btn-pill">{'ON' if st.session_state.get('presentation_mode') else 'OFF'}</span>
+    </a>
+  </div>
+
+  <div class="actionbar-right">
+    <div class="action-hint">
+      <strong>Dica:</strong> clique em um KPI (IBS/CBS/Créditos/ICMS) para filtrar • use a busca para localizar itens.
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 if st.session_state.show_tour:
     with st.expander("🧭 Tour rápido para apresentação (clique para abrir)", expanded=True):
         st.markdown(
