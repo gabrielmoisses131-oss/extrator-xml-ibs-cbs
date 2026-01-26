@@ -1336,200 +1336,28 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 # -----------------------------
 # UI
 # -----------------------------
-# -----------------------------
-# Header (modern)
-# -----------------------------
-st.markdown("""
-<style>
-/* Header modernizado (topo) */
-.header-container {
-    font-family: 'Inter', sans-serif;
-    background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(59, 130, 246, 0.1);
-    padding: 1.25rem 1.25rem 1.15rem 1.25rem;
-    margin: -0.6rem 0 1.15rem 0;
-    border-radius: 18px;
-    box-shadow: 0 18px 45px rgba(2,6,23,.10);
-    border: 1px solid rgba(15,23,42,.10);
-}
-
-.header-top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: .9rem;
-}
-
-.header-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.version-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.06));
-    border: 1px solid rgba(59, 130, 246, 0.22);
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 800;
-    color: #3b82f6;
-    animation: pulse-glow 3s ease-in-out infinite;
-    white-space: nowrap;
-}
-
-@keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-    50% { box-shadow: 0 0 22px 0 rgba(59, 130, 246, 0.28); }
-}
-
-.header-title {
-    font-size: 1.55rem;
-    font-weight: 900;
-    color: #0f172a;
-    margin: 0;
-    letter-spacing: -.02em;
-}
-
-.header-title span {
-    background: linear-gradient(135deg, #3b82f6, #10b981);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.header-subtitle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.88rem;
-    color: #64748b;
-    margin: 6px 0 0 0;
-}
-
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: rgba(241, 245, 249, 0.75);
-    border: 1px solid rgba(226, 232, 240, 1);
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 800;
-    color: #475569;
-    white-space: nowrap;
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    background: #22c55e;
-    border-radius: 999px;
-    animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.2); opacity: 0.7; }
-}
-
-.info-banner {
-    position: relative;
-    padding: .9rem 1rem;
-    background: linear-gradient(135deg,
-        rgba(59, 130, 246, 0.05),
-        rgba(59, 130, 246, 0.10),
-        rgba(59, 130, 246, 0.05)
-    );
-    border: 1px solid rgba(59, 130, 246, 0.18);
-    border-radius: 14px;
-    overflow: hidden;
-}
-
-.info-banner::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.12), transparent);
-    animation: shimmer 3.2s linear infinite;
-}
-
-@keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-}
-
-.info-content {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.info-icon {
-    padding: 8px 9px;
-    background: rgba(59, 130, 246, 0.14);
-    border-radius: 12px;
-    font-weight: 900;
-    line-height: 1;
-    animation: rotate 4s ease-in-out infinite;
-    flex: 0 0 auto;
-}
-
-@keyframes rotate {
-    0%, 100% { transform: rotate(0deg); }
-    25% { transform: rotate(5deg); }
-    75% { transform: rotate(-5deg); }
-}
-
-.info-text {
-    font-size: 0.9rem;
-    color: #0f172a;
-    margin: 0;
-}
-
-.info-text .highlight { font-weight: 900; color: #2563eb; }
-.info-text .bold { font-weight: 900; }
-
-@media (max-width: 820px){
-  .header-top{ flex-direction: column; align-items: flex-start; }
-}
-</style>
-
-<div class="header-container">
-  <div class="header-top">
-    <div>
-      <div class="header-left">
-        <div class="version-badge">⚡ v2.0</div>
-        <h1 class="header-title">Extrator XML - <span>IBS/CBS</span></h1>
-      </div>
-      <p class="header-subtitle">🛡️ Visualização de dados fiscais da reforma tributária</p>
-    </div>
-
-    <div class="status-badge">
-      <span class="status-dot"></span>
-      📶 Conectado
-    </div>
+st.markdown(dedent("""
+<div class="topbar">
+  <div class="brand">
+<div class="brand-badge" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="#1f2937" stroke-width="1.7"/>
+        <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="#1f2937" stroke-width="1.7"/>
+        <path d="M8 12h8M8 16h8" stroke="#1f2937" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+</div>
+<div>
+      <h1>Extrator XML - IBS/CBS</h1>
+<div class="sub">Visualização de dados fiscais da reforma tributária</div>
+</div>
   </div>
 
-  <div class="info-banner">
-    <div class="info-content">
-      <div class="info-icon">⚡</div>
-      <p class="info-text">
-        Envie uma <span class="highlight">planilha modelo</span> (.xlsx) na lateral para inserir os dados na aba
-        <span class="bold">LANÇAMENTOS</span> mantendo suas fórmulas.
-      </p>
-    </div>
+  <div class="status-pill">
+<span class="status-dot"></span>
+    Pronto para análise
   </div>
 </div>
-""", unsafe_allow_html=True)
+"""), unsafe_allow_html=True)
 
 # Sidebar: uploads
 with st.sidebar:
