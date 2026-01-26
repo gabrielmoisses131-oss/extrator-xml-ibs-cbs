@@ -1051,12 +1051,48 @@ div[data-testid="stToast"]{display:none !important;}
 }
 .card:hover .bar-fill{ transform: scaleX(1.03); }
 
-/* ===== FIX: remover borda duplicada no uploader ===== */
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+/* ===== Upload: borda tracejada animada (loading) ===== */
+
+/* Remove bordas internas do Streamlit */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"],
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div,
+section[data-testid="stSidebar"] section[data-testid="stFileUploader"]{
   border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div{
-  border: 2px dashed rgba(59,130,246,.55) !important;
+
+/* Container do uploader */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  position: relative !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+/* Borda animada */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]::before{
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border-radius: 14px;
+  border: 2px dashed rgba(59,130,246,.65);
+  pointer-events: none;
+  animation: dashMove 1.2s linear infinite;
+  box-shadow:
+    0 0 0 1px rgba(59,130,246,.15),
+    0 0 22px rgba(59,130,246,.12);
+}
+
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]:hover::before{
+  border-color: rgba(59,130,246,.9);
+  box-shadow:
+    0 0 0 1px rgba(59,130,246,.25),
+    0 0 36px rgba(59,130,246,.2);
+}
+
+@keyframes dashMove{
+  to { border-dashoffset: -16px; }
 }
 
 </style>
@@ -1432,12 +1468,48 @@ st.markdown("""
 @media(max-width:820px){
   .header-top{flex-direction:column;align-items:flex-start;}
 }
-/* ===== FIX: remover borda duplicada no uploader ===== */
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+/* ===== Upload: borda tracejada animada (loading) ===== */
+
+/* Remove bordas internas do Streamlit */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"],
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div,
+section[data-testid="stSidebar"] section[data-testid="stFileUploader"]{
   border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div{
-  border: 2px dashed rgba(59,130,246,.55) !important;
+
+/* Container do uploader */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  position: relative !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+/* Borda animada */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]::before{
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border-radius: 14px;
+  border: 2px dashed rgba(59,130,246,.65);
+  pointer-events: none;
+  animation: dashMove 1.2s linear infinite;
+  box-shadow:
+    0 0 0 1px rgba(59,130,246,.15),
+    0 0 22px rgba(59,130,246,.12);
+}
+
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]:hover::before{
+  border-color: rgba(59,130,246,.9);
+  box-shadow:
+    0 0 0 1px rgba(59,130,246,.25),
+    0 0 36px rgba(59,130,246,.2);
+}
+
+@keyframes dashMove{
+  to { border-dashoffset: -16px; }
 }
 
 </style>
