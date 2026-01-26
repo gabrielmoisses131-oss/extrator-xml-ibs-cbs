@@ -1013,6 +1013,36 @@ div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !impo
 /* Remover qualquer overlay de “status”/toast do Streamlit */
 div[data-testid="stToast"]{display:none !important;}
 
+/* ===== MICRO-INTERAÇÕES (premium) ===== */
+
+/* KPIs: ícone gira no hover */
+.kpi { will-change: transform; }
+.kpi .kpi-icon{
+  transition: transform .65s cubic-bezier(.34,1.56,.64,1), filter .35s ease;
+  will-change: transform;
+}
+.kpi:hover .kpi-icon{
+  transform: rotate(14deg) scale(1.14);
+  filter: drop-shadow(0 0 14px rgba(99,102,241,.35));
+}
+
+/* Painéis: ícone também interage */
+.card .icon{
+  transition: transform .65s cubic-bezier(.34,1.56,.64,1), filter .35s ease;
+  will-change: transform;
+}
+.card:hover .icon{
+  transform: rotate(10deg) scale(1.10);
+  filter: drop-shadow(0 0 12px rgba(99,102,241,.25));
+}
+
+/* Barra interna: micro-zoom no hover */
+.card .bar-fill{
+  transform-origin: left center;
+  transition: transform .35s ease;
+}
+.card:hover .bar-fill{ transform: scaleX(1.03); }
+
 </style>
 """
 
@@ -1401,7 +1431,7 @@ st.markdown("""
   </div>
 
   <div class="info-banner">
-    ⚡ Envie seus <b>XMLs</b> na lateral para inserir os dados na aba <b>LANÇAMENTOS</b> mantendo suas fórmulas.
+    ⚡ Envie XML(s) ou a <b>planilha modelo</b> (.xlsx) na lateral para preencher a aba <b>LANÇAMENTOS</b> mantendo suas fórmulas.
   </div>
 </div>
 """, unsafe_allow_html=True)
