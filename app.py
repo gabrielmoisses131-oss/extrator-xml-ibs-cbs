@@ -2353,7 +2353,7 @@ else:
     with t1:
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.metric("Notas/Arquivos", f"{df['Arquivo'].nunique():,}".replace(",", "."))
+            st.metric("Notas/Arquivos", f"{df.get('ARQUIVO', df.get('Arquivo')).nunique():,}".replace(",", "."))
         with c2:
             st.metric("Itens", f"{len(df):,}".replace(",", "."))
         with c3:
