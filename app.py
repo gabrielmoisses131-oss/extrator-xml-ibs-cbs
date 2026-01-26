@@ -1103,6 +1103,20 @@ section[data-testid="stSidebar"] button[kind="secondary"]{
   border-radius: 14px !important;
 }
 
+/* ===== FIX (v2): botão Browse do uploader não “cola” na borda ===== */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] button{
+  margin-top: 14px !important;
+  transform: translateY(10px) !important;
+  border: 1px solid rgba(59,130,246,.28) !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
+}
+
+/* dá um respiro extra no container do uploader */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  padding-bottom: 12px !important;
+}
+
 </style>
 """
 
@@ -1526,6 +1540,20 @@ section[data-testid="stSidebar"] button[kind="secondary"]{
   border: 1px solid rgba(59,130,246,.35) !important;
   box-shadow: none !important;
   border-radius: 14px !important;
+}
+
+/* ===== FIX (v2): botão Browse do uploader não “cola” na borda ===== */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] button{
+  margin-top: 14px !important;
+  transform: translateY(10px) !important;
+  border: 1px solid rgba(59,130,246,.28) !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
+}
+
+/* dá um respiro extra no container do uploader */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  padding-bottom: 12px !important;
 }
 
 </style>
