@@ -1011,110 +1011,66 @@ div[style*="position: fixed"][style*="bottom"][style*="right"]{display:none !imp
 div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !important;}
 
 /* Remover qualquer overlay de “status”/toast do Streamlit */
-div[data-testid="stToast"]{display:none !important;}
 
 
-/* ============================
-   KPI v2 — neon/glow premium
-   (top neon bar + progress)
-============================ */
 
-/* top neon bar em vez da barra esquerda */
-.kpi::before{
-  content:"";
-  position:absolute;
-  left:0; top:0; right:0;
-  height:4px;
-  width:auto;
-  background: rgba(148,163,184,.55);
-  box-shadow: 0 0 18px rgba(148,163,184,.35);
-  border-radius: 18px 18px 0 0;
-  z-index: 2;
-}
-.kpi.kpi-ibs::before{
-  background: linear-gradient(90deg, rgba(37,99,235,.95), rgba(59,130,246,.55));
-  box-shadow: 0 0 22px rgba(37,99,235,.35);
-}
-.kpi.kpi-cbs::before{
-  background: linear-gradient(90deg, rgba(22,163,74,.95), rgba(34,197,94,.55));
-  box-shadow: 0 0 22px rgba(22,163,74,.35);
-}
-.kpi.kpi-cred::before{
-  background: linear-gradient(90deg, rgba(245,158,11,.98), rgba(251,191,36,.55));
-  box-shadow: 0 0 22px rgba(245,158,11,.35);
-}
-.kpi.kpi-total::before{
-  background: linear-gradient(90deg, rgba(124,58,237,.98), rgba(168,85,247,.55));
-  box-shadow: 0 0 22px rgba(124,58,237,.35);
-}
-
-/* ícone com “neon glass” */
-.kpi-icon{
-  width:44px; height:44px;
-  border-radius: 14px;
-  display:flex; align-items:center; justify-content:center;
-  background: rgba(255,255,255,.55);
-  border: 1px solid rgba(15,23,42,.10);
-  box-shadow: 0 12px 32px rgba(2,6,23,.12);
-  backdrop-filter: blur(10px);
-}
-.kpi.kpi-ibs .kpi-icon{
-  background: radial-gradient(circle at 30% 30%, rgba(37,99,235,.20), rgba(255,255,255,.55) 60%);
-  box-shadow: 0 12px 34px rgba(37,99,235,.14);
-}
-.kpi.kpi-cbs .kpi-icon{
-  background: radial-gradient(circle at 30% 30%, rgba(22,163,74,.20), rgba(255,255,255,.55) 60%);
-  box-shadow: 0 12px 34px rgba(22,163,74,.14);
-}
-.kpi.kpi-cred .kpi-icon{
-  background: radial-gradient(circle at 30% 30%, rgba(245,158,11,.24), rgba(255,255,255,.55) 60%);
-  box-shadow: 0 12px 34px rgba(245,158,11,.14);
-}
-.kpi.kpi-total .kpi-icon{
-  background: radial-gradient(circle at 30% 30%, rgba(124,58,237,.24), rgba(255,255,255,.55) 60%);
-  box-shadow: 0 12px 34px rgba(124,58,237,.14);
-}
-
-/* progress bar dentro do KPI */
-.kpi-progress{
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(15,23,42,.06);
+/* ===== Topbar v2 (Auditor Fiscal) ===== */
+.topbar{
+  padding: 18px 22px;
+  border-radius: 18px;
   border: 1px solid rgba(15,23,42,.08);
-  overflow:hidden;
-  margin-top: 14px;
-  position: relative;
-  z-index: 1;
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.88));
+  box-shadow: 0 22px 60px rgba(2,6,23,.10);
 }
-.kpi-progress > span{
-  display:block;
-  height:100%;
+.topbar .brand-badge{
+  width: 46px; height: 46px;
+  border-radius: 16px;
+  background: radial-gradient(circle at 30% 20%, rgba(168,85,247,.30), rgba(59,130,246,.18) 40%, rgba(255,255,255,.70) 72%);
+  box-shadow: 0 18px 50px rgba(124,58,237,.22);
+  border: 1px solid rgba(124,58,237,.22);
+}
+.topbar .brand-badge svg{ filter: drop-shadow(0 8px 18px rgba(2,6,23,.10)); }
+.brand-line{
+  display:flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.brand-accent{
+  display:inline-block;
+  width: 54px;
+  height: 18px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1));
+  box-shadow: 0 14px 34px rgba(124,58,237,.30);
+  transform: translateY(-2px);
+}
+.status-pill.ok{
+  background: rgba(34,197,94,.12);
+  border: 1px solid rgba(34,197,94,.20);
+  color: #16a34a;
+  box-shadow: 0 18px 44px rgba(34,197,94,.12);
+}
+
+/* Ações rápidas */
+.action-hint{
+  color: rgba(100,116,139,.95);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.62);
+  border: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 18px 50px rgba(2,6,23,.08);
+}
+
+/* Radios / toggles mais “premium” */
+div[data-testid="stToggle"] label{
+  background: rgba(255,255,255,.75);
+  border: 1px solid rgba(15,23,42,.10);
   border-radius: 999px;
-  width: 0%;
-  animation: kpiProg 900ms ease-out forwards;
+  padding: 8px 12px;
+  box-shadow: 0 18px 50px rgba(2,6,23,.08);
 }
-.kpi.kpi-ibs .kpi-progress > span{
-  background: linear-gradient(90deg, rgba(37,99,235,1), rgba(59,130,246,.55));
-  box-shadow: 0 0 18px rgba(37,99,235,.28);
-}
-.kpi.kpi-cbs .kpi-progress > span{
-  background: linear-gradient(90deg, rgba(22,163,74,1), rgba(34,197,94,.55));
-  box-shadow: 0 0 18px rgba(22,163,74,.28);
-}
-.kpi.kpi-cred .kpi-progress > span{
-  background: linear-gradient(90deg, rgba(245,158,11,1), rgba(251,191,36,.55));
-  box-shadow: 0 0 18px rgba(245,158,11,.28);
-}
-.kpi.kpi-total .kpi-progress > span{
-  background: linear-gradient(90deg, rgba(124,58,237,1), rgba(168,85,247,.55));
-  box-shadow: 0 0 18px rgba(124,58,237,.28);
-}
-
-@keyframes kpiProg{
-  from{ width:0% }
-  to{ width: var(--w, 70%); }
-}
-
 </style>
 """
 
@@ -1466,25 +1422,72 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 st.markdown(dedent("""
 <div class="topbar">
   <div class="brand">
-<div class="brand-badge" aria-hidden="true">
+    <div class="brand-badge" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none">
-        <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="#1f2937" stroke-width="1.7"/>
-        <path d="M8 12h8M8 16h8" stroke="#1f2937" stroke-width="1.7" stroke-linecap="round"/>
+        <path d="M12 2l7 4v6c0 5-3.2 9.4-7 10-3.8-.6-7-5-7-10V6l7-4z" stroke="#0f172a" stroke-width="1.8" />
+        <path d="M9.2 12.2l1.9 1.9 3.8-4.2" stroke="#0f172a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-</div>
-<div>
-      <h1>Extrator XML - IBS/CBS</h1>
-<div class="sub">Visualização de dados fiscais da reforma tributária</div>
-</div>
+    </div>
+    <div>
+      <div class="brand-line">
+        <h1>Auditor Fiscal</h1>
+        <span class="brand-accent" aria-hidden="true"></span>
+      </div>
+      <div class="sub">Conferência inteligente SEFAZ × Fiscal ADM × Fiscal Flex</div>
+    </div>
   </div>
 
-  <div class="status-pill">
-<span class="status-dot"></span>
-    Pronto para análise
+  <div class="status-pill ok" title="Status do sistema">
+    <span class="status-dot"></span>
+    Sistema Operacional
   </div>
 </div>
 """), unsafe_allow_html=True)
+
+
+# =============================
+# Ações rápidas (interativas)
+# =============================
+if "show_tour" not in st.session_state:
+    st.session_state.show_tour = False
+if "presentation_mode" not in st.session_state:
+    st.session_state.presentation_mode = True
+
+a1,a2,a3,a4 = st.columns([1.05, 1.05, 1.25, 3.65], vertical_alignment="center")
+with a1:
+    if st.button("🧭 Tour", help="Mostra um guia rápido para apresentação", use_container_width=True):
+        st.session_state.show_tour = not st.session_state.show_tour
+        st.toast("Tour atualizado ✨")
+with a2:
+    if st.button("🔄 Recalcular", help="Reprocessa e atualiza os totais/alertas", use_container_width=True):
+        st.toast("Recalculando…")
+        time.sleep(0.25)
+        st.rerun()
+with a3:
+    st.session_state.presentation_mode = st.toggle("Modo apresentação", value=st.session_state.presentation_mode, help="Layout mais limpo para reunião", label_visibility="collapsed")
+with a4:
+    st.markdown(
+        '<div class="action-hint">Dica: clique em um KPI (IBS/CBS/Créditos/ICMS) para filtrar a tabela • use a busca para localizar itens instantaneamente.</div>',
+        unsafe_allow_html=True
+    )
+
+if st.session_state.show_tour:
+    with st.expander("🧭 Tour rápido para apresentação (clique para abrir)", expanded=True):
+        st.markdown(
+            """
+            **Como conduzir a demo em 60 segundos**
+            1. **Upload** de XML/ZIP na lateral → o painel recalcula automaticamente.
+            2. **KPIs** (no topo) → clique para filtrar e provar consistência por categoria.
+            3. **Alertas** → mostram arquivos com problemas e onde corrigir.
+            4. **Tabela premium** → busca + filtros + exportação para Excel.
+
+            **Perguntas que o cliente costuma fazer**
+            - “De onde veio esse valor?” → coluna **Fonte do valor** + link/arquivo.
+            - “Quais notas deram problema?” → seção **Arquivos com problemas**.
+            """
+        )
+
+
 
 # Sidebar: uploads
 with st.sidebar:
@@ -1758,17 +1761,11 @@ if selected_kpi not in ("all", "ibs", "cbs", "cred", "total"):
     selected_kpi = "all"
 
 
-# Progresso relativo dos KPIs (só visual)
-max_kpi = max(float(ibs_total or 0), float(cbs_total or 0), float(creditos_total or 0), float(total_tributos or 0), 1e-9)
-def _pct(v):
-    v = float(v or 0)
-    return f"{max(0.0, min(1.0, v/max_kpi))*100:.1f}%"
-
 st.markdown(
     f"""
 <div class="kpi-grid">
   <a class="kpi-link" href="?kpi=ibs">
-    <div class="kpi kpi-ibs {'is-active' if selected_kpi=='ibs' else ''}" style="--w:{_pct(ibs_total)};">
+    <div class="kpi kpi-ibs {'is-active' if selected_kpi=='ibs' else ''}">
       <div class="kpi-head">
         <div>
           <div class="label">IBS Total</div>
@@ -1784,12 +1781,11 @@ st.markdown(
       </div>
       <div class="value">{money(ibs_total)}</div>
       <div class="sub">Soma das bases IBS (XML)</div>
-      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cbs">
-    <div class="kpi kpi-cbs {'is-active' if selected_kpi=='cbs' else ''}" style="--w:{_pct(cbs_total)};">
+    <div class="kpi kpi-cbs {'is-active' if selected_kpi=='cbs' else ''}">
       <div class="kpi-head">
         <div>
           <div class="label">CBS Total</div>
@@ -1804,12 +1800,11 @@ st.markdown(
       </div>
       <div class="value">{money(cbs_total)}</div>
       <div class="sub">Soma das bases CBS (XML)</div>
-      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=cred">
-    <div class="kpi kpi-cred {'is-active' if selected_kpi=='cred' else ''}" style="--w:{_pct(creditos_total)};">
+    <div class="kpi kpi-cred {'is-active' if selected_kpi=='cred' else ''}">
       <div class="kpi-head">
         <div>
           <div class="label">Créditos</div>
@@ -1825,12 +1820,11 @@ st.markdown(
       </div>
       <div class="value">{money(creditos_total)}</div>
       <div class="sub">Somatório de vIBS + vCBS</div>
-      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 
   <a class="kpi-link" href="?kpi=total">
-    <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}" style="--w:{_pct(total_tributos)};">
+    <div class="kpi kpi-total {'is-active' if selected_kpi=='total' else ''}">
       <div class="kpi-head">
         <div>
           <div class="label">ICMS Total</div>
@@ -1846,7 +1840,6 @@ st.markdown(
       </div>
       <div class="value">{money(total_tributos)}</div>
       <div class="sub">Soma do ICMS (XML)</div>
-      <div class="kpi-progress"><span></span></div>
     </div>
   </a>
 </div>
