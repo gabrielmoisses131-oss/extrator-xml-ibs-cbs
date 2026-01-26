@@ -1051,6 +1051,20 @@ div[data-testid="stToast"]{display:none !important;}
 }
 .card:hover .bar-fill{ transform: scaleX(1.03); }
 
+/* ===== FIX: botão Browse do uploader não “cola” na borda ===== */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] button{
+  margin-top: 14px !important;
+  transform: translateY(10px) !important;
+  border: 1px solid rgba(59,130,246,.28) !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
+}
+
+/* Respiro extra no container do uploader */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  padding-bottom: 12px !important;
+}
+
 </style>
 """
 
@@ -1447,6 +1461,20 @@ st.markdown("""
 @media(max-width:820px){
   .header-top{flex-direction:column;align-items:flex-start;}
 }
+/* ===== FIX: botão Browse do uploader não “cola” na borda ===== */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] button{
+  margin-top: 14px !important;
+  transform: translateY(10px) !important;
+  border: 1px solid rgba(59,130,246,.28) !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
+}
+
+/* Respiro extra no container do uploader */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  padding-bottom: 12px !important;
+}
+
 </style>
 
 <div class="header-container">
