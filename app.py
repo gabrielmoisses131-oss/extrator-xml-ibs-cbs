@@ -1016,33 +1016,32 @@ div[data-testid="stToast"]{display:none !important;}
 
 /* ===== MICRO-INTERAÇÕES (premium | gira e para) ===== */
 
-/* Transições base (efeito mola) */
-.kpi .kpi-icon,
-.kpi .kpi-icon svg,
-.card .icon,
-.card .icon svg {
-  transition:
-    transform 0.75s cubic-bezier(.22,1.28,.42,1),
-    filter 0.4s ease;
+/* Base (efeito mola) */
+.kpi .kpi-icon, .card .icon{
+  transition: filter 0.35s ease;
+  will-change: filter;
+}
+.kpi .kpi-icon svg, .card .icon svg{
+  display: block;
+  transform-origin: 50% 50%;
+  transition: transform 0.75s cubic-bezier(.22,1.28,.42,1);
   will-change: transform;
 }
 
-/* Hover nos KPIs */
-.kpi:hover .kpi-icon {
-  transform: rotate(18deg) scale(1.15);
+/* Hover: gira UMA vez e para (bem visível) */
+.kpi:hover .kpi-icon svg{
+  transform: rotate(180deg) scale(1.08);
+}
+.card:hover .icon svg{
+  transform: rotate(160deg) scale(1.06);
+}
+
+/* Glow suave */
+.kpi:hover .kpi-icon{
   filter: drop-shadow(0 0 14px rgba(99,102,241,.35));
 }
-
-/* Hover nos painéis */
-.card:hover .icon {
-  transform: rotate(14deg) scale(1.12);
+.card:hover .icon{
   filter: drop-shadow(0 0 12px rgba(99,102,241,.25));
-}
-
-/* Estado normal (parado) */
-.kpi .kpi-icon,
-.card .icon {
-  transform: rotate(0deg) scale(1);
 }
 
 /* Micro movimento na barra */
@@ -1050,9 +1049,8 @@ div[data-testid="stToast"]{display:none !important;}
   transform-origin: left center;
   transition: transform .35s ease;
 }
-.card:hover .bar-fill{
-  transform: scaleX(1.03);
-}
+.card:hover .bar-fill{ transform: scaleX(1.03); }
+
 </style>
 """
 
