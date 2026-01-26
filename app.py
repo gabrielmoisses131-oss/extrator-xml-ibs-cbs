@@ -1051,6 +1051,14 @@ div[data-testid="stToast"]{display:none !important;}
 }
 .card:hover .bar-fill{ transform: scaleX(1.03); }
 
+/* ===== FIX: remover borda duplicada no uploader ===== */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  border: none !important;
+}
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div{
+  border: 2px dashed rgba(59,130,246,.55) !important;
+}
+
 </style>
 """
 
@@ -1424,6 +1432,14 @@ st.markdown("""
 @media(max-width:820px){
   .header-top{flex-direction:column;align-items:flex-start;}
 }
+/* ===== FIX: remover borda duplicada no uploader ===== */
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
+  border: none !important;
+}
+section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] > div{
+  border: 2px dashed rgba(59,130,246,.55) !important;
+}
+
 </style>
 
 <div class="header-container">
