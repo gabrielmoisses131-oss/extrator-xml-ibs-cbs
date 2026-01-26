@@ -1993,43 +1993,6 @@ df = pd.DataFrame(rows_all)
 if not df.empty:
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.date
 
-# ---------- Normalização de colunas (compatibilidade) ----------
-# Alguns XMLs/versões geram nomes em MAIÚSCULO. Criamos aliases para manter o app robusto.
-def _alias(df_, src, dst):
-    if src in df_.columns and dst not in df_.columns:
-        df_[dst] = df_[src]
-
-if not df.empty:
-    # trim nomes
-    df.columns = [str(c).strip() for c in df.columns]
-
-    # arquivos
-    _alias(df, "ARQUIVO", "Arquivo")
-    _alias(df, "arquivo", "Arquivo")
-    _alias(df, "ARQUIVO", "arquivo")
-
-    # item/serviço
-    _alias(df, "ITEM/SERVIÇO", "Item/Serviço")
-    _alias(df, "ITEM/SERVICO", "Item/Serviço")
-    _alias(df, "ITEM/SERVIÇO", "ITEM/SERVIÇO")
-
-    # valor operação
-    _alias(df, "VALOR OPERAÇÃO", "Valor Operação")
-    _alias(df, "VALOR DA OPERAÇÃO", "Valor da operação")
-    _alias(df, "Valor Operação", "Valor da operação")
-
-    # trib / impostos
-    _alias(df, "CCLASSTRIB", "cClassTrib")
-    _alias(df, "CCT", "cClassTrib")
-    _alias(df, "VIBS", "vIBS")
-    _alias(df, "VCBS", "vCBS")
-
-    # data/número
-    _alias(df, "DATA", "Data")
-    _alias(df, "NÚMERO", "Numero")
-    _alias(df, "NUMERO", "Numero")
-
-
 # ---------- KPIs ----------
 def money(x):
     if x is None or (isinstance(x, float) and pd.isna(x)):
@@ -2390,9 +2353,7 @@ else:
     with t1:
         c1, c2, c3 = st.columns(3)
         with c1:
-            col_arq = "Arquivo" if "Arquivo" in df.columns else ("ARQUIVO" if "ARQUIVO" in df.columns else ("arquivo" if "arquivo" in df.columns else None))
-            n_arq = int(df[col_arq].nunique()) if col_arq else 0
-            st.metric("Notas/Arquivos", f"{n_arq:,}".replace(",", "."))
+            st.metric("Notas/Arquivos", f"{df['Arquivo'].nunique():,}".replace(",", "."))
         with c2:
             st.metric("Itens", f"{len(df):,}".replace(",", "."))
         with c3:
