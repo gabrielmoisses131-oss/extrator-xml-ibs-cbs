@@ -1339,8 +1339,6 @@ div[data-testid="stToggle"] label{
 
 </style>
 """
-</style>
-"""
 
 st.markdown(CSS, unsafe_allow_html=True)
 
@@ -1701,7 +1699,7 @@ st.markdown(dedent("""
         <h1>Auditor Fiscal</h1>
         <span class="brand-accent" aria-hidden="true"></span>
       </div>
-      <div class="sub">Conferência inteligente SEFAZ × Fiscal ADM × Fiscal Flex</div>
+      <div class="sub">Conferência inteligente SEFAZ x Fiscal ADM x Fiscal Flex</div>
     </div>
   </div>
 
