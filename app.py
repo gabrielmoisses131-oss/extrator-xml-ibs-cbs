@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import html
 import time
 from openpyxl import load_workbook
@@ -1051,19 +1052,13 @@ div[data-testid="stToast"]{display:none !important;}
 }
 .card:hover .bar-fill{ transform: scaleX(1.03); }
 
-
-/* ===== Upload card clicável + sucesso ===== */
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
-  cursor: pointer;
+/* ===== Upload: esconder Browse + card inteiro clicável ===== */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button,
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] button{
+  display: none !important;
 }
-.upload-success::after{
-  content:"✓";
-  position:absolute;
-  top:14px;
-  right:18px;
-  color:#22c55e;
-  font-size:22px;
-  font-weight:800;
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]{
+  cursor: pointer !important;
 }
 
 </style>
@@ -1462,19 +1457,13 @@ st.markdown("""
 @media(max-width:820px){
   .header-top{flex-direction:column;align-items:flex-start;}
 }
-
-/* ===== Upload card clicável + sucesso ===== */
-section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]{
-  cursor: pointer;
+/* ===== Upload: esconder Browse + card inteiro clicável ===== */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button,
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] button{
+  display: none !important;
 }
-.upload-success::after{
-  content:"✓";
-  position:absolute;
-  top:14px;
-  right:18px;
-  color:#22c55e;
-  font-size:22px;
-  font-weight:800;
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]{
+  cursor: pointer !important;
 }
 
 </style>
@@ -1535,7 +1524,26 @@ with st.sidebar:
 """), unsafe_allow_html=True)
 
     st.markdown('<div class="uiverse-uploader">', unsafe_allow_html=True)
-    xml_files = st.file_uploader("", type=["xml","zip"], accept_multiple_files=True, label_visibility="collapsed")", type=["xml", "zip"], accept_multiple_files=True, label_visibility="collapsed")
+    xml_files = st.file_uploader("", type=["xml","zip"], accept_multiple_files=True, label_visibility="collapsed")
+    components.html(
+        '''
+    <script>
+    (function(){
+      function hook(){
+        const dz = window.parent.document.querySelector('[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]');
+        if(!dz) return;
+        dz.addEventListener('click', function(){
+          const input = dz.querySelector('input[type="file"]');
+          if(input) input.click();
+        });
+      }
+      hook();
+      setTimeout(hook, 800);
+    })();
+    </script>
+        ''',
+        height=0,
+    )
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(dedent("""
@@ -2070,12 +2078,3 @@ else:
                 file_name="planilha_preenchida.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-
-<script>
-document.addEventListener("click", function(e){
-  const dz = e.target.closest('[data-testid="stFileUploaderDropzone"]');
-  if(!dz) return;
-  const input = dz.querySelector('input[type=file]');
-  if(input) input.click();
-});
-</script>
