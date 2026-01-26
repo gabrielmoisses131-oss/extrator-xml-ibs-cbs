@@ -2353,8 +2353,21 @@ else:
     with t1:
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.metric("Notas/Arquivos", f"{df.get('ARQUIVO', df.get('Arquivo')).nunique():,}".replace(",", "."))
-        with c2:
+            # --- KPI seguro: Notas/Arquivos (não quebra se a coluna não existir) ---
+_col_arq = None
+try:
+    if isinstance(df, pd.DataFrame):
+        for _c in ("ARQUIVO", "Arquivo", "arquivo"):
+            if _c in df.columns:
+                _col_arq = _c
+                break
+        _qtd_arq = int(df[_col_arq].nunique()) if _col_arq else 0
+    else:
+        _qtd_arq = 0
+except Exception:
+    _qtd_arq = 0
+
+st.metric("Notas/Arquivos", f"{_qtd_arq:,}".replace(",", "."))with c2:
             st.metric("Itens", f"{len(df):,}".replace(",", "."))
         with c3:
             base_total = df.get("Valor Operação", pd.Series(dtype=float))
