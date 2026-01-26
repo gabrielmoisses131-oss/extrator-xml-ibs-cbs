@@ -1095,6 +1095,14 @@ section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]:h
   to { border-dashoffset: -16px; }
 }
 
+/* ===== FIX FINAL: botão Browse não cria linha dupla ===== */
+section[data-testid="stSidebar"] button[kind="secondary"]{
+  margin-top: 12px !important;
+  border: 1px solid rgba(59,130,246,.35) !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
+}
+
 </style>
 """
 
@@ -1510,6 +1518,14 @@ section[data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"]:h
 
 @keyframes dashMove{
   to { border-dashoffset: -16px; }
+}
+
+/* ===== FIX FINAL: botão Browse não cria linha dupla ===== */
+section[data-testid="stSidebar"] button[kind="secondary"]{
+  margin-top: 12px !important;
+  border: 1px solid rgba(59,130,246,.35) !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
 }
 
 </style>
