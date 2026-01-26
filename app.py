@@ -1017,23 +1017,29 @@ div[data-testid="stToast"]{display:none !important;}
 
 /* KPIs: ícone gira no hover */
 .kpi { will-change: transform; }
-.kpi .kpi-icon{
+.kpi .kpi-icon, .kpi .kpi-icon svg{
   transition: transform .65s cubic-bezier(.34,1.56,.64,1), filter .35s ease;
   will-change: transform;
 }
 .kpi:hover .kpi-icon{
-  transform: rotate(14deg) scale(1.14);
-  filter: drop-shadow(0 0 14px rgba(99,102,241,.35));
+  transform: rotate(14deg) scale(1.14) !important;
+  filter: drop-shadow(0 0 14px rgba(99,102,241,.35)) !important;
+}
+.kpi:hover .kpi-icon svg{
+  transform: rotate(-8deg) scale(1.05) !important;
 }
 
 /* Painéis: ícone também interage */
-.card .icon{
+.card .icon, .card .icon svg{
   transition: transform .65s cubic-bezier(.34,1.56,.64,1), filter .35s ease;
   will-change: transform;
 }
 .card:hover .icon{
-  transform: rotate(10deg) scale(1.10);
-  filter: drop-shadow(0 0 12px rgba(99,102,241,.25));
+  transform: rotate(10deg) scale(1.10) !important;
+  filter: drop-shadow(0 0 12px rgba(99,102,241,.25)) !important;
+}
+.card:hover .icon svg{
+  transform: rotate(-6deg) scale(1.04) !important;
 }
 
 /* Barra interna: micro-zoom no hover */
@@ -1042,7 +1048,6 @@ div[data-testid="stToast"]{display:none !important;}
   transition: transform .35s ease;
 }
 .card:hover .bar-fill{ transform: scaleX(1.03); }
-
 </style>
 """
 
@@ -1431,7 +1436,7 @@ st.markdown("""
   </div>
 
   <div class="info-banner">
-    ⚡ Envie XML(s) ou a <b>planilha modelo</b> (.xlsx) na lateral para preencher a aba <b>LANÇAMENTOS</b> mantendo suas fórmulas.
+    ⚡ Envie seus <b>XMLs</b> na lateral para inserir os dados na aba <b>LANÇAMENTOS</b> mantendo suas fórmulas.
   </div>
 </div>
 """, unsafe_allow_html=True)
