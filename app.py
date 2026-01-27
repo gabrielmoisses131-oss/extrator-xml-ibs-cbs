@@ -1178,9 +1178,16 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
     rows: list[dict] = []
     dets = root.findall(".//{*}infNFe/{*}det") or root.findall(".//{*}det")
     for det in dets:
+        # === CHAVE DA NF-e / NFC-e (chNFe) e nItem ===
+        chave = ""
+        inf = root.find(".//{*}infNFe")
+        if inf is not None:
+            _id = inf.attrib.get("Id", "") or ""
+            chave = _id.replace("NFe", "").strip()
+        nitem = det.attrib.get("nItem", "") or ""
         xprod = _find_text(det, ".//{*}prod/{*}xProd") or ""
-            ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
-            if ibscbs is None:
+        ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
+        if ibscbs is None:
             # alguns XML podem não ter IBSCBS -> ignora item
             continue
 
@@ -1204,6 +1211,8 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
 
         rows.append(
             {
+                "chNFe": chave,
+                "nItem": nitem,
                 "Data": emissao,
                 "Numero": nnf,
                 "Item/Serviço": xprod,
@@ -1653,6 +1662,11 @@ if xml_files:
 
 df = pd.DataFrame(rows_all)
 
+# === REMOÇÃO DE DUPLICADOS (chNFe + nItem) ===
+if not df.empty and "chNFe" in df.columns and "nItem" in df.columns:
+    df = df.drop_duplicates(subset=["chNFe", "nItem"], keep="first").reset_index(drop=True)
+
+
 # Normaliza Data
 if not df.empty:
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.date
@@ -2077,7 +2091,3 @@ else:
                 file_name="planilha_preenchida.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-
-# === REMOÇÃO DE DUPLICADOS (chNFe + nItem) ===
-if 'df' in locals() and not df.empty and 'chNFe' in df.columns and 'nItem' in df.columns:
-    df = df.drop_duplicates(subset=['chNFe', 'nItem'], keep='first').reset_index(drop=True)
