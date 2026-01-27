@@ -1178,7 +1178,16 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
     rows: list[dict] = []
     dets = root.findall(".//{*}infNFe/{*}det") or root.findall(".//{*}det")
     for det in dets:
-        xprod = _find_text(det, ".//{*}prod/{*}xProd") or ""
+        
+            # === CHAVE DA NF-e / NFC-e ===
+            chave = ""
+            inf = root.find(".//{*}infNFe")
+            if inf is not None:
+                _id = inf.attrib.get("Id", "") or ""
+                chave = _id.replace("NFe", "").strip()
+
+            nitem = det.attrib.get("nItem", "") or ""
+xprod = _find_text(det, ".//{*}prod/{*}xProd") or ""
         ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
         if ibscbs is None:
             # alguns XML podem não ter IBSCBS -> ignora item
@@ -1652,6 +1661,11 @@ if xml_files:
     spinner_placeholder.empty()
 
 df = pd.DataFrame(rows_all)
+
+# === REMOÇÃO DE DUPLICADOS (chNFe + nItem) ===
+if not df.empty and "chNFe" in df.columns and "nItem" in df.columns:
+    df = df.drop_duplicates(subset=["chNFe", "nItem"], keep="first").reset_index(drop=True)
+
 
 # Normaliza Data
 if not df.empty:
