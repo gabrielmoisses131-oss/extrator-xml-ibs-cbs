@@ -1188,7 +1188,7 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
 
             nitem = det.attrib.get("nItem", "") or ""
 xprod = _find_text(det, ".//{*}prod/{*}xProd") or ""
-        ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
+ibscbs = det.find(".//{*}imposto/{*}IBSCBS")
         if ibscbs is None:
             # alguns XML podem não ter IBSCBS -> ignora item
             continue
