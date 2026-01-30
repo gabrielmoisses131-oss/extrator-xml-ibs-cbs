@@ -1607,39 +1607,6 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
   font-weight:950;
   color:#0f172a;
 }
-
-/* ===== Pulse (apenas no hover) para os ícones do cálculo ===== */
-@keyframes calcPulse {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(1.14); }
-  100% { transform: scale(1); }
-}
-.calc-line .name i{
-  transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s ease, filter .22s ease;
-  will-change: transform, box-shadow, filter;
-}
-.calc-line:hover .name i{
-  animation: calcPulse .45s ease-out 1;
-}
-
-/* Glow por tipo (combina com seu design) */
-.calc-line.minus:hover .name i{
-  box-shadow: 0 0 18px rgba(245,158,11,.35);
-  filter: drop-shadow(0 0 12px rgba(245,158,11,.28));
-}
-.calc-line.icms:hover .name i{
-  box-shadow: 0 0 18px rgba(37,99,235,.35);
-  filter: drop-shadow(0 0 12px rgba(37,99,235,.28));
-}
-.calc-line.pis:hover .name i{
-  box-shadow: 0 0 18px rgba(124,58,237,.35);
-  filter: drop-shadow(0 0 12px rgba(124,58,237,.28));
-}
-.calc-line.cof:hover .name i{
-  box-shadow: 0 0 18px rgba(22,163,74,.35);
-  filter: drop-shadow(0 0 12px rgba(22,163,74,.28));
-}
-
 .calc-line.minus .name i{ border-color: rgba(245,158,11,.25); background: rgba(245,158,11,.10); }
 .calc-line.icms .name i{ border-color: rgba(37,99,235,.25); background: rgba(37,99,235,.10); }
 .calc-line.pis  .name i{ border-color: rgba(124,58,237,.25); background: rgba(124,58,237,.10); }
@@ -1728,6 +1695,27 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
             mime="text/csv",
             key=f"{key_prefix}_dl_div"
         )
+
+    # Download do XML da nota selecionada (individual)
+    try:
+        sig_sel = str(row.get("xml_sig", "")).strip()
+        store = st.session_state.get("xml_store", {})
+        if sig_sel and sig_sel in store:
+            meta = store[sig_sel]
+            nnf = meta.get("Numero") or row.get("Numero") or ""
+            chave = meta.get("chave") or ""
+            fname = f"NFe_{nnf}.xml" if nnf else "nota.xml"
+            if chave:
+                fname = f"NFe_{nnf}_{chave[-6:]}.xml" if nnf else f"NFe_{chave[-6:]}.xml"
+            st.download_button(
+                "⬇️ Baixar XML desta nota",
+                data=meta["bytes"],
+                file_name=fname,
+                mime="application/xml",
+                key=f"{key_prefix}_dl_xml_{sig_sel}",
+            )
+    except Exception:
+        pass
 
     # Dropdown: por padrão, só divergentes quando existir
     show_only_div = st.checkbox(
@@ -2212,6 +2200,10 @@ rows_all: list[dict] = []
 errors: list[str] = []
 cancelados: list[dict] = []
 
+# Store dos XMLs para download por nota (sig -> bytes/metadata)
+st.session_state.setdefault('xml_store', {})
+st.session_state.setdefault('nnf_to_sig', {})
+
 # Acumuladores por NOTA (ICMSTot)
 icms_total_all = 0.0
 pis_total_all = 0.0
@@ -2236,6 +2228,46 @@ if xml_files:
                     continue
                 seen_xml_sigs.add(sig)
                 xml_processed += 1
+
+            # Guardar XML para download individual (por assinatura/chave)
+            try:
+                root_tmp = ET.fromstring(b)
+                nnf_tmp = _parse_nnf(root_tmp) or ""
+                dh_tmp = _parse_date(root_tmp)
+                chave_tmp = _extract_nfe_key(b)
+            except Exception:
+                nnf_tmp, dh_tmp, chave_tmp = "", None, ""
+            st.session_state["xml_store"][sig] = {
+                "bytes": b,
+                "src": f.name,
+                "Numero": nnf_tmp,
+                "Data": dh_tmp,
+                "chave": chave_tmp,
+            }
+            if nnf_tmp:
+                st.session_state["nnf_to_sig"].setdefault(str(nnf_tmp), [])
+                if sig not in st.session_state["nnf_to_sig"][str(nnf_tmp)]:
+                    st.session_state["nnf_to_sig"][str(nnf_tmp)].append(sig)
+
+                        # Guardar XML para download individual (por assinatura/chave)
+                        try:
+                            root_tmp = ET.fromstring(xb)
+                            nnf_tmp = _parse_nnf(root_tmp) or ""
+                            dh_tmp = _parse_date(root_tmp)
+                            chave_tmp = _extract_nfe_key(xb)
+                        except Exception:
+                            nnf_tmp, dh_tmp, chave_tmp = "", None, ""
+                        st.session_state["xml_store"][sig] = {
+                            "bytes": xb,
+                            "src": f"{f.name}:{xn}",
+                            "Numero": nnf_tmp,
+                            "Data": dh_tmp,
+                            "chave": chave_tmp,
+                        }
+                        if nnf_tmp:
+                            st.session_state["nnf_to_sig"].setdefault(str(nnf_tmp), [])
+                            if sig not in st.session_state["nnf_to_sig"][str(nnf_tmp)]:
+                                st.session_state["nnf_to_sig"][str(nnf_tmp)].append(sig)
             # Totais por NOTA (somente quando for XML direto)
             if not f.name.lower().endswith(".zip"):
                 tot0 = _parse_tax_totals_from_xml(b)
@@ -2261,6 +2293,8 @@ if xml_files:
                         pis_total_all += tot["vPIS"]
                         cofins_total_all += tot["vCOFINS"]
                         rows = _parse_items_from_xml(xb, f"{f.name}:{xn}")
+                        for rr in rows:
+                            rr['xml_sig'] = sig
                         if not rows:
                             ce = _detect_cancel_event(xb)
                             if ce is not None:
@@ -2272,6 +2306,8 @@ if xml_files:
                         rows_all.extend(rows)
             else:
                 rows = _parse_items_from_xml(b, f.name)
+                for rr in rows:
+                    rr['xml_sig'] = sig
                 if not rows:
                     ce = _detect_cancel_event(b)
                     if ce is not None:
