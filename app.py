@@ -1398,42 +1398,44 @@ def aplicar_validacao_base_ibscbs(df_itens: pd.DataFrame) -> pd.DataFrame:
 
 
 def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: str = "ibscbs"):
-    """Retângulo premium com resumo + cálculo detalhado."""
+    """Retângulo premium com resumo + cálculo detalhado.
+    FIX: garante que o HTML não seja interpretado como bloco de código (markdown),
+    removendo indentação antes de renderizar.
+    """
     if df_validado is None or len(df_validado) == 0:
         return
 
     # CSS premium (injetado uma vez)
-    _html_block("""
+    css = """
 <style>
-    .ibscbs-panel{background:linear-gradient(180deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 100%);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:18px;box-shadow:0 18px 56px rgba(15,23,42,.10);backdrop-filter:blur(10px)}
-    .ibscbs-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
-    .ibscbs-title{display:flex;align-items:flex-start;gap:10px}
-    .ibscbs-title h3{margin:0;font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-.2px}
-    .ibscbs-title p{margin:3px 0 0 0;font-size:12px;color:#64748b;max-width:820px}
-    .ibscbs-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid transparent;white-space:nowrap}
-    .ibscbs-chip.ok{color:#15803d;background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.24)}
-    .ibscbs-chip.bad{color:#b91c1c;background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.24)}
-    .ibscbs-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:10px;margin-bottom:14px}
-    .ibscbs-metric{background:rgba(248,250,252,.90);border:1px solid rgba(226,232,240,.95);border-radius:14px;padding:12px}
-    .ibscbs-metric .k{font-size:12px;color:#64748b;margin:0}
-    .ibscbs-metric .v{font-size:18px;font-weight:900;color:#0f172a;margin:6px 0 0 0}
-    .ibscbs-metric .s{font-size:11px;color:#94a3b8;margin:6px 0 0 0}
-    .ibscbs-divider{height:1px;background:rgba(226,232,240,.95);margin:14px 0}
-    .ibscbs-calc{display:grid;grid-template-columns:1.25fr .75fr;gap:12px}
-    .ibscbs-formula{background:rgba(15,23,42,.04);border:1px solid rgba(148,163,184,.25);border-radius:14px;padding:12px}
-    .ibscbs-formula .label{font-size:12px;font-weight:800;color:#334155;margin:0 0 8px 0}
-    .ibscbs-eq{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:#0f172a;line-height:1.55;margin:0;word-break:break-word}
-    .ibscbs-right{background:rgba(248,250,252,.92);border:1px solid rgba(226,232,240,.95);border-radius:14px;padding:12px}
-    .ibscbs-right .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
-    .ibscbs-right .row span{font-size:12px;color:#64748b}
-    .ibscbs-right .row b{font-size:13px;color:#0f172a}
-    .ibscbs-right .delta{margin-top:10px;padding-top:10px;border-top:1px dashed rgba(148,163,184,.4)}
-    .ibscbs-foot{margin-top:10px;font-size:11px;color:#94a3b8}
-    .ibscbs-mini{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .ibscbs-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid rgba(226,232,240,.95);background:rgba(255,255,255,.75);color:#0f172a}
-    @media (max-width:900px){.ibscbs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ibscbs-calc{grid-template-columns:1fr}}
-    </style>
-    """)
+.ibscbs-panel{background:linear-gradient(180deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 100%);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:18px;box-shadow:0 18px 56px rgba(15,23,42,.10);backdrop-filter:blur(10px)}
+.ibscbs-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.ibscbs-title{display:flex;align-items:flex-start;gap:10px}
+.ibscbs-title h3{margin:0;font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-.2px}
+.ibscbs-title p{margin:3px 0 0 0;font-size:12px;color:#64748b;max-width:820px}
+.ibscbs-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid transparent;white-space:nowrap}
+.ibscbs-chip.ok{color:#15803d;background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.24)}
+.ibscbs-chip.bad{color:#b91c1c;background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.24)}
+.ibscbs-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:10px;margin-bottom:14px}
+.ibscbs-metric{background:rgba(248,250,252,.90);border:1px solid rgba(226,232,240,.95);border-radius:14px;padding:12px}
+.ibscbs-metric .k{font-size:12px;color:#64748b;margin:0}
+.ibscbs-metric .v{font-size:18px;font-weight:900;color:#0f172a;margin:6px 0 0 0}
+.ibscbs-metric .s{font-size:11px;color:#94a3b8;margin:6px 0 0 0}
+.ibscbs-divider{height:1px;background:rgba(226,232,240,.95);margin:14px 0}
+.ibscbs-calc{display:grid;grid-template-columns:1.25fr .75fr;gap:12px}
+.ibscbs-formula{background:rgba(15,23,42,.04);border:1px solid rgba(148,163,184,.25);border-radius:14px;padding:12px}
+.ibscbs-formula .label{font-size:12px;font-weight:800;color:#334155;margin:0 0 8px 0}
+.ibscbs-eq{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:#0f172a;line-height:1.55;margin:0;word-break:break-word}
+.ibscbs-right{background:rgba(248,250,252,.92);border:1px solid rgba(226,232,240,.95);border-radius:14px;padding:12px}
+.ibscbs-right .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+.ibscbs-right .row span{font-size:12px;color:#64748b}
+.ibscbs-right .row b{font-size:13px;color:#0f172a}
+.ibscbs-right .delta{margin-top:10px;padding-top:10px;border-top:1px dashed rgba(148,163,184,.4)}
+.ibscbs-foot{margin-top:10px;font-size:11px;color:#94a3b8}
+@media (max-width:900px){.ibscbs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ibscbs-calc{grid-template-columns:1fr}}
+</style>
+"""
+    st.markdown(_clean_html(css), unsafe_allow_html=True)
 
     total = len(df_validado)
     ok = int((df_validado["Status Base IBS/CBS"] == "OK").sum())
@@ -1447,26 +1449,24 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
     chip = "ok" if status_global_ok else "bad"
     chip_txt = "✓ Validado (0,00)" if status_global_ok else f"⚠ Divergências ({div})"
 
-    # Seleção premium (pior divergência por padrão)
+    # Seleção: pior divergência por padrão
     df_tmp = df_validado.copy()
     df_tmp["_absdif"] = df_tmp["Dif Base IBS/CBS"].abs()
     df_tmp = df_tmp.sort_values("_absdif", ascending=False)
 
-    # opções
     label_col = "Item/Serviço" if "Item/Serviço" in df_tmp.columns else df_tmp.columns[0]
     options = df_tmp[label_col].fillna("").astype(str).tolist()
-    # limita opções pra não travar UI em lote gigante
-    max_opt = 600
-    options_show = options[:max_opt]
-    default_idx = 0
-
+    options_show = options[:600] if len(options) > 600 else options
     pick = st.selectbox(
         "Detalhar cálculo (selecione um item)",
-        options=options_show,
-        index=default_idx,
+        options_show,
+        index=0 if options_show else None,
         key=f"{key_prefix}_pick",
         help="Mostra a decomposição do item: vProd − vDesc − ICMS_item − PIS_item − COFINS_item."
     )
+
+    if not options_show:
+        return
 
     row = df_tmp[df_tmp[label_col].astype(str) == str(pick)].iloc[0]
 
@@ -1485,75 +1485,68 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
         f"= Base Calc ({_br_money(base_calc)})"
     )
 
-    _html_block(f"""
+    panel = f"""
 <div class="ibscbs-panel">
-      <div class="ibscbs-header">
-        <div class="ibscbs-title">
-          <div style="font-size:18px;">🧾</div>
-          <div>
-            <h3>Validação da Base IBS/CBS (ZERO tolerância)</h3>
-            <p>Validação por subtração (item a item). A base calculada deve bater exatamente com a base do XML (IBSCBS/vBC). Qualquer centavo vira divergência.</p>
-          </div>
-        </div>
-        <div class="ibscbs-chip {chip}">{chip_txt}</div>
-      </div>
-
-      <div class="ibscbs-metrics">
-        <div class="ibscbs-metric">
-          <p class="k">Itens OK</p>
-          <p class="v">{ok}</p>
-          <p class="s">Diferença = 0,00</p>
-        </div>
-        <div class="ibscbs-metric">
-          <p class="k">Divergentes</p>
-          <p class="v">{div}</p>
-          <p class="s">Diferença ≠ 0,00</p>
-        </div>
-        <div class="ibscbs-metric">
-          <p class="k">Soma Base (XML)</p>
-          <p class="v">R$ {_br_money(soma_xml)}</p>
-          <p class="s">Total do lote</p>
-        </div>
-        <div class="ibscbs-metric">
-          <p class="k">Soma Base (Calc)</p>
-          <p class="v">R$ {_br_money(soma_calc)}</p>
-          <p class="s">Subtração total</p>
-        </div>
-      </div>
-
-      <div class="ibscbs-divider"></div>
-
-      <div class="ibscbs-calc">
-        <div class="ibscbs-formula">
-          <p class="label">Cálculo detalhado</p>
-          <p style="margin:0 0 8px 0;font-size:12px;color:#475569;"><b>Item:</b> {str(row.get(label_col,''))}</p>
-          <pre class="ibscbs-eq">{formula}</pre>
-
-          <div class="ibscbs-mini">
-            <span class="ibscbs-pill">Base XML: <b>R$ {_br_money(base_xml)}</b></span>
-            <span class="ibscbs-pill">Base Calc: <b>R$ {_br_money(base_calc)}</b></span>
-            <span class="ibscbs-pill">Δ: <b>R$ {_br_money(dif)}</b></span>
-          </div>
-        </div>
-
-        <div class="ibscbs-right">
-          <div class="row"><span>Base XML</span><b>R$ {_br_money(base_xml)}</b></div>
-          <div class="row"><span>Base Calc</span><b>R$ {_br_money(base_calc)}</b></div>
-          <div class="row"><span>Diferença</span><b>R$ {_br_money(dif)}</b></div>
-
-          <div class="delta">
-            <div class="row"><span>Δ Total (Calc − XML)</span><b>R$ {_br_money(delta_total)}</b></div>
-          </div>
-
-          <div class="ibscbs-foot">
-            Regra rígida: diferença precisa ser <b>0,00</b>. Qualquer centavo vira divergência.
-          </div>
-        </div>
+  <div class="ibscbs-header">
+    <div class="ibscbs-title">
+      <div style="font-size:18px;">🧾</div>
+      <div>
+        <h3>Validação da Base IBS/CBS (ZERO tolerância)</h3>
+        <p>Validação por subtração (item a item). A base calculada deve bater exatamente com a base do XML (IBSCBS/vBC). Qualquer centavo vira divergência.</p>
       </div>
     </div>
-    """)
+    <div class="ibscbs-chip {chip}">{chip_txt}</div>
+  </div>
 
+  <div class="ibscbs-metrics">
+    <div class="ibscbs-metric">
+      <p class="k">Itens</p>
+      <p class="v">{total}</p>
+      <p class="s">Total analisado</p>
+    </div>
+    <div class="ibscbs-metric">
+      <p class="k">Soma Base (XML)</p>
+      <p class="v">R$ {_br_money(soma_xml)}</p>
+      <p class="s">Total do XML</p>
+    </div>
+    <div class="ibscbs-metric">
+      <p class="k">Soma Base (Calc)</p>
+      <p class="v">R$ {_br_money(soma_calc)}</p>
+      <p class="s">Subtração por item</p>
+    </div>
+    <div class="ibscbs-metric">
+      <p class="k">Diferença</p>
+      <p class="v">R$ {_br_money(delta_total)}</p>
+      <p class="s">Calc − XML</p>
+    </div>
+  </div>
 
+  <div class="ibscbs-divider"></div>
+
+  <div class="ibscbs-calc">
+    <div class="ibscbs-formula">
+      <p class="label">Cálculo detalhado</p>
+      <p class="ibscbs-eq">{formula}</p>
+    </div>
+
+    <div class="ibscbs-right">
+      <div class="row"><span>Base XML</span><b>R$ {_br_money(base_xml)}</b></div>
+      <div class="row"><span>Base Calc</span><b>R$ {_br_money(base_calc)}</b></div>
+      <div class="row"><span>Diferença</span><b>R$ {_br_money(dif)}</b></div>
+
+      <div class="delta">
+        <div class="row"><span>Status do item</span><b>{'OK' if abs(dif) <= TOLERANCIA_BASE_IBSCBS else 'Divergente'}</b></div>
+        <div class="row"><span>Arquivo</span><b>{_h(row.get('arquivo',''))}</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ibscbs-foot">Regra rígida: diferença precisa ser <b>0,00</b>. Qualquer centavo vira divergência.</div>
+</div>
+"""
+
+    # FIX definitivo: remove indentação antes de renderizar
+    st.markdown(_clean_html(panel), unsafe_allow_html=True)
 def _detect_cancel_event(xml_bytes: bytes) -> dict | None:
     """Detecta XML de evento de cancelamento (procEventoNFe / evento).
     Retorna dict com dados úteis ou None se não for cancelamento.
