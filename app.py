@@ -1067,6 +1067,16 @@ section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]{
 
 st.markdown(CSS, unsafe_allow_html=True)
 
+
+# -----------------------------
+# HTML helper (avoids Markdown code-block due to indentation)
+# -----------------------------
+def _html_block(s: str):
+    # Streamlit markdown treats leading 4 spaces as code block.
+    # Dedent and strip to guarantee HTML renders.
+    st.markdown(dedent(s).strip(), unsafe_allow_html=True)
+
+
 # -----------------------------
 # Spinner overlay (4 cores)
 # -----------------------------
@@ -1341,10 +1351,6 @@ def _safe_num(x) -> float:
     except Exception:
         return 0.0
 
-def _render_html_block(s: str):
-    """Renderiza HTML sem virar bloco de código (remove indentação)."""
-    st.markdown(dedent(s).strip(), unsafe_allow_html=True)
-
 def aplicar_validacao_base_ibscbs(df_itens: pd.DataFrame) -> pd.DataFrame:
     """Adiciona colunas de validação IBS/CBS (por item)."""
     df = df_itens.copy()
@@ -1397,8 +1403,8 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
         return
 
     # CSS premium (injetado uma vez)
-    _render_html_block("""
-    <style>
+    _html_block("""
+<style>
     .ibscbs-panel{background:linear-gradient(180deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 100%);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:18px;box-shadow:0 18px 56px rgba(15,23,42,.10);backdrop-filter:blur(10px)}
     .ibscbs-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
     .ibscbs-title{display:flex;align-items:flex-start;gap:10px}
@@ -1479,8 +1485,8 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
         f"= Base Calc ({_br_money(base_calc)})"
     )
 
-    _render_html_block(f"""
-    <div class="ibscbs-panel">
+    _html_block(f"""
+<div class="ibscbs-panel">
       <div class="ibscbs-header">
         <div class="ibscbs-title">
           <div style="font-size:18px;">🧾</div>
