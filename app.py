@@ -1232,11 +1232,11 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
         vibs = _find_text(ibscbs, ".//{*}vIBS")
         vcbs = _find_text(ibscbs, ".//{*}vCBS")
 
-vprod = _find_text(det, ".//{*}prod/{*}vProd")
-vdesc = _find_text(det, ".//{*}prod/{*}vDesc")
-vicms = _find_text(det, ".//{*}imposto/{*}ICMS//{*}vICMS")
-vpis = _find_text(det, ".//{*}imposto/{*}PIS//{*}vPIS")
-vcofins = _find_text(det, ".//{*}imposto/{*}COFINS//{*}vCOFINS")
+        vprod = _find_text(det, ".//{*}prod/{*}vProd")
+        vdesc = _find_text(det, ".//{*}prod/{*}vDesc")
+        vicms = _find_text(det, ".//{*}imposto/{*}ICMS//{*}vICMS")
+        vpis = _find_text(det, ".//{*}imposto/{*}PIS//{*}vPIS")
+        vcofins = _find_text(det, ".//{*}imposto/{*}COFINS//{*}vCOFINS")
 
         def _to_float(x: str | None):
             try:
