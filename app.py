@@ -1016,42 +1016,46 @@ div[style*="position:fixed"][style*="bottom"][style*="right"]{display:none !impo
 div[data-testid="stToast"]{display:none !important;}
 
 
-/* ===== MICRO-INTERAÇÕES (premium | gira e para) ===== */
+/* ===== MICRO-INTERAÇÕES (premium | pulse no hover) ===== */
 
-/* Base (efeito mola) */
-.kpi .kpi-icon, .card .icon{
-  transition: filter 0.35s ease;
-  will-change: filter;
-}
-.kpi .kpi-icon svg, .card .icon svg{
-  display: block;
+/* ===== ÍCONES: PARADOS, PULSO APENAS NO HOVER ===== */
+
+/* estado normal: absolutamente parado */
+.kpi .kpi-icon svg,
+.card .icon svg,
+.section-icon svg,
+.calc-icon svg {
+  transform: none;
+  animation: none;
+  transition:
+    transform .35s cubic-bezier(.22,1.2,.42,1),
+    filter .35s ease;
   transform-origin: 50% 50%;
-  transition: transform 0.75s cubic-bezier(.22,1.28,.42,1);
-  will-change: transform;
 }
 
-/* Hover: gira UMA vez e para (bem visível) */
-.kpi:hover .kpi-icon svg{
-  transform: rotate(180deg) scale(1.08);
-}
-.card:hover .icon svg{
-  transform: rotate(160deg) scale(1.06);
-}
-
-/* Glow suave */
-.kpi:hover .kpi-icon{
-  filter: drop-shadow(0 0 14px rgba(99,102,241,.35));
-}
-.card:hover .icon{
-  filter: drop-shadow(0 0 12px rgba(99,102,241,.25));
+/* keyframes do pulso */
+@keyframes neonPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
 }
 
-/* Micro movimento na barra */
-.card .bar-fill{
-  transform-origin: left center;
-  transition: transform .35s ease;
+/* hover: pulsa UMA VEZ (sem loop infinito) */
+.kpi:hover .kpi-icon svg,
+.card:hover .icon svg,
+.calc-row:hover .calc-icon svg,
+.section-title:hover .section-icon svg {
+  animation: neonPulse .55s ease-out 1;
 }
-.card:hover .bar-fill{ transform: scaleX(1.03); }
+
+/* glow acompanha o hover */
+.kpi:hover .kpi-icon,
+.card:hover .icon,
+.calc-row:hover .calc-icon,
+.section-title:hover .section-icon {
+  filter: drop-shadow(0 0 14px rgba(99,102,241,.45));
+}
+
 
 /* ===== Upload: esconder Browse + card inteiro clicável ===== */
 section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button,
