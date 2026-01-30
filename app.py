@@ -1062,42 +1062,6 @@ section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]{
   cursor: pointer !important;
 }
 
-
-/* =========================
-   PULSE NEON – ÍCONES EM TEXTO / DIV
-   ========================= */
-.calc-icon,
-.section-icon {
-  animation: none;
-  transform: scale(1);
-  transition:
-    transform .28s cubic-bezier(.22,1,.36,1),
-    box-shadow .28s ease,
-    filter .28s ease;
-}
-@keyframes neonPulse {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(1.12); }
-  100% { transform: scale(1); }
-}
-.calc-row:hover .calc-icon,
-.section-title:hover .section-icon {
-  animation: neonPulse .45s ease-out 1;
-}
-.calc-row.add:hover .calc-icon {
-  box-shadow: 0 0 18px rgba(22,163,74,.45);
-  filter: drop-shadow(0 0 14px rgba(22,163,74,.35));
-}
-.calc-row.sub:hover .calc-icon {
-  box-shadow: 0 0 18px rgba(245,158,11,.45);
-  filter: drop-shadow(0 0 14px rgba(245,158,11,.35));
-}
-.section-title:hover .section-icon {
-  box-shadow:
-    0 0 0 1px rgba(99,102,241,.25),
-    0 0 24px rgba(99,102,241,.35);
-}
-
 </style>
 """
 
@@ -1643,6 +1607,39 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
   font-weight:950;
   color:#0f172a;
 }
+
+/* ===== Pulse (apenas no hover) para os ícones do cálculo ===== */
+@keyframes calcPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.calc-line .name i{
+  transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s ease, filter .22s ease;
+  will-change: transform, box-shadow, filter;
+}
+.calc-line:hover .name i{
+  animation: calcPulse .45s ease-out 1;
+}
+
+/* Glow por tipo (combina com seu design) */
+.calc-line.minus:hover .name i{
+  box-shadow: 0 0 18px rgba(245,158,11,.35);
+  filter: drop-shadow(0 0 12px rgba(245,158,11,.28));
+}
+.calc-line.icms:hover .name i{
+  box-shadow: 0 0 18px rgba(37,99,235,.35);
+  filter: drop-shadow(0 0 12px rgba(37,99,235,.28));
+}
+.calc-line.pis:hover .name i{
+  box-shadow: 0 0 18px rgba(124,58,237,.35);
+  filter: drop-shadow(0 0 12px rgba(124,58,237,.28));
+}
+.calc-line.cof:hover .name i{
+  box-shadow: 0 0 18px rgba(22,163,74,.35);
+  filter: drop-shadow(0 0 12px rgba(22,163,74,.28));
+}
+
 .calc-line.minus .name i{ border-color: rgba(245,158,11,.25); background: rgba(245,158,11,.10); }
 .calc-line.icms .name i{ border-color: rgba(37,99,235,.25); background: rgba(37,99,235,.10); }
 .calc-line.pis  .name i{ border-color: rgba(124,58,237,.25); background: rgba(124,58,237,.10); }
