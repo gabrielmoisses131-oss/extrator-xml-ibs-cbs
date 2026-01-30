@@ -1814,6 +1814,7 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
 
     <div class="delta">
       <div class="row {('status-ok' if status_item=='OK' else 'status-bad')}"><span>Status do item</span><b>{status_item}</b></div>
+      <div class="row"><span>Nº da nota</span><b>{_h(str(row.get('Numero','') or ''))}</b></div>
       <div class="row"><span>Arquivo</span><b>{_h(row.get('arquivo',''))}</b></div>
     </div>
   </div>
