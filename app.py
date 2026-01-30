@@ -1454,23 +1454,40 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
     df_tmp["_absdif"] = df_tmp["Dif Base IBS/CBS"].abs()
     df_tmp = df_tmp.sort_values("_absdif", ascending=False)
 
-    label_col = "Item/Serviço" if "Item/Serviço" in df_tmp.columns else df_tmp.columns[0]
-    options = df_tmp[label_col].fillna("").astype(str).tolist()
-    options_show = options[:600] if len(options) > 600 else options
-    pick = st.selectbox(
-        "Detalhar cálculo (selecione um item)",
-        options_show,
-        index=0 if options_show else None,
-        key=f"{key_prefix}_pick",
-        help="Mostra a decomposição do item: vProd − vDesc − ICMS_item − PIS_item − COFINS_item."
-    )
+label_col = "Item/Serviço" if "Item/Serviço" in df_tmp.columns else df_tmp.columns[0]
 
-    if not options_show:
-        return
+# Filtro: mostrar somente itens divergentes (o que deu "errado")
+only_bad_default = True if div > 0 else False
+only_bad = st.checkbox(
+    "Mostrar somente as divergentes",
+    value=only_bad_default,
+    key=f"{key_prefix}_only_bad",
+    help="Se marcado, lista apenas itens cujo status está Divergente."
+)
 
-    row = df_tmp[df_tmp[label_col].astype(str) == str(pick)].iloc[0]
+df_pick = df_tmp[df_tmp["Status Base IBS/CBS"] != "OK"].copy() if only_bad else df_tmp
 
-    vProd = _safe_num(row.get("vProd"))
+if df_pick.empty:
+    st.info("Nenhuma divergência encontrada nos itens (tudo OK).")
+    return
+
+options = df_pick[label_col].fillna("").astype(str).tolist()
+options_show = options[:600] if len(options) > 600 else options
+pick = st.selectbox(
+    "Detalhar cálculo (selecione um item)",
+    options_show,
+    index=0 if options_show else None,
+    key=f"{key_prefix}_pick",
+    help="Mostra a decomposição do item: vProd − vDesc − ICMS_item − PIS_item − COFINS_item."
+)
+
+if not options_show:
+    return
+
+row = df_pick[df_pick[label_col].astype(str) == str(pick)].iloc[0]
+
+vProd = _safe_num
+(row.get("vProd"))
     vDesc = _safe_num(row.get("vDesc"))
     vICMS = _safe_num(row.get("vICMS_item"))
     vPIS  = _safe_num(row.get("vPIS_item"))
