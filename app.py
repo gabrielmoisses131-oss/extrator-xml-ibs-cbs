@@ -1398,15 +1398,11 @@ def aplicar_validacao_base_ibscbs(df_itens: pd.DataFrame) -> pd.DataFrame:
 
 
 def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: str = "ibscbs"):
-    """Retângulo premium com resumo + cálculo detalhado.
-    FIX: garante que o HTML não seja interpretado como bloco de código (markdown),
-    removendo indentação antes de renderizar.
-    """
-    if df_validado is None or len(df_validado) == 0:
+    """Retângulo premium com resumo + cálculo detalhado (sem HTML aparecer como código)."""
+    if df_validado is None or df_validado.empty:
         return
 
-    # CSS premium (injetado uma vez)
-    css = """
+    _html_block("""
 <style>
 .ibscbs-panel{background:linear-gradient(180deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 100%);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:18px;box-shadow:0 18px 56px rgba(15,23,42,.10);backdrop-filter:blur(10px)}
 .ibscbs-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -1434,8 +1430,7 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
 .ibscbs-foot{margin-top:10px;font-size:11px;color:#94a3b8}
 @media (max-width:900px){.ibscbs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ibscbs-calc{grid-template-columns:1fr}}
 </style>
-"""
-    st.markdown(_clean_html(css), unsafe_allow_html=True)
+""")
 
     total = len(df_validado)
     ok = int((df_validado["Status Base IBS/CBS"] == "OK").sum())
@@ -1445,49 +1440,67 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
     soma_calc = float(df_validado["Base IBS/CBS (Calc)"].sum())
     delta_total = round(soma_calc - soma_xml, 2)
 
-    status_global_ok = (div == 0)
-    chip = "ok" if status_global_ok else "bad"
-    chip_txt = "✓ Validado (0,00)" if status_global_ok else f"⚠ Divergências ({div})"
+    chip_cls = "ok" if div == 0 else "bad"
+    chip_txt = "✓ Validado (0,00)" if div == 0 else f"⚠ Divergências ({div})"
 
-    # Seleção: pior divergência por padrão
+    only_bad_default = True if div > 0 else False
+    only_bad = st.checkbox(
+        "Mostrar somente as divergentes",
+        value=only_bad_default,
+        key=f"{key_prefix}_onlybad",
+        help="Filtra o detalhamento para mostrar apenas itens com divergência."
+    )
+
     df_tmp = df_validado.copy()
     df_tmp["_absdif"] = df_tmp["Dif Base IBS/CBS"].abs()
     df_tmp = df_tmp.sort_values("_absdif", ascending=False)
 
-label_col = "Item/Serviço" if "Item/Serviço" in df_tmp.columns else df_tmp.columns[0]
+    df_pick = df_tmp[df_tmp["Status Base IBS/CBS"] != "OK"].copy() if only_bad else df_tmp.copy()
 
-# Filtro: mostrar somente itens divergentes (o que deu "errado")
-only_bad_default = True if div > 0 else False
-only_bad = st.checkbox(
-    "Mostrar somente as divergentes",
-    value=only_bad_default,
-    key=f"{key_prefix}_only_bad",
-    help="Se marcado, lista apenas itens cujo status está Divergente."
-)
+    # Painel resumo (sempre)
+    _html_block(f"""
+<div class="ibscbs-panel">
+  <div class="ibscbs-header">
+    <div class="ibscbs-title">
+      <div style="font-size:18px;">🧾</div>
+      <div>
+        <h3>Validação da Base IBS/CBS (ZERO tolerância)</h3>
+        <p>Validação por subtração (item a item). A base calculada deve bater exatamente com a base do XML (IBSCBS/vBC). Qualquer centavo vira divergência.</p>
+      </div>
+    </div>
+    <div class="ibscbs-chip {chip_cls}">{chip_txt}</div>
+  </div>
 
-df_pick = df_tmp[df_tmp["Status Base IBS/CBS"] != "OK"].copy() if only_bad else df_tmp
+  <div class="ibscbs-metrics">
+    <div class="ibscbs-metric"><p class="k">Itens</p><p class="v">{total}</p><p class="s">Total analisado</p></div>
+    <div class="ibscbs-metric"><p class="k">Soma Base (XML)</p><p class="v">R$ {_br_money(soma_xml)}</p><p class="s">Total do XML</p></div>
+    <div class="ibscbs-metric"><p class="k">Soma Base (Calc)</p><p class="v">R$ {_br_money(soma_calc)}</p><p class="s">Calculado por item</p></div>
+    <div class="ibscbs-metric"><p class="k">Diferença</p><p class="v">R$ {_br_money(delta_total)}</p><p class="s">Calc − XML</p></div>
+  </div>
 
-if df_pick.empty:
-    st.info("Nenhuma divergência encontrada nos itens (tudo OK).")
-    return
+  <div class="ibscbs-foot">Regra rígida: diferença precisa ser <b>0,00</b>. Qualquer centavo vira divergência.</div>
+</div>
+""")
 
-options = df_pick[label_col].fillna("").astype(str).tolist()
-options_show = options[:600] if len(options) > 600 else options
-pick = st.selectbox(
-    "Detalhar cálculo (selecione um item)",
-    options_show,
-    index=0 if options_show else None,
-    key=f"{key_prefix}_pick",
-    help="Mostra a decomposição do item: vProd − vDesc − ICMS_item − PIS_item − COFINS_item."
-)
+    if df_pick.empty:
+        st.info("Nenhum item divergente para detalhar. ✅")
+        return
 
-if not options_show:
-    return
+    label_col = "Item/Serviço" if "Item/Serviço" in df_pick.columns else df_pick.columns[0]
+    options = df_pick[label_col].fillna("").astype(str).tolist()
+    options_show = options[:600]
 
-row = df_pick[df_pick[label_col].astype(str) == str(pick)].iloc[0]
+    pick = st.selectbox(
+        "Detalhar cálculo (selecione um item)",
+        options=options_show,
+        index=0,
+        key=f"{key_prefix}_pick",
+        help="Mostra a decomposição do item: vProd − vDesc − ICMS_item − PIS_item − COFINS_item."
+    )
 
-vProd = _safe_num
-(row.get("vProd"))
+    row = df_pick[df_pick[label_col].astype(str) == str(pick)].iloc[0]
+
+    vProd = _safe_num(row.get("vProd"))
     vDesc = _safe_num(row.get("vDesc"))
     vICMS = _safe_num(row.get("vICMS_item"))
     vPIS  = _safe_num(row.get("vPIS_item"))
@@ -1502,48 +1515,14 @@ vProd = _safe_num
         f"= Base Calc ({_br_money(base_calc)})"
     )
 
-    panel = f"""
+    _html_block(f"""
 <div class="ibscbs-panel">
-  <div class="ibscbs-header">
-    <div class="ibscbs-title">
-      <div style="font-size:18px;">🧾</div>
-      <div>
-        <h3>Validação da Base IBS/CBS (ZERO tolerância)</h3>
-        <p>Validação por subtração (item a item). A base calculada deve bater exatamente com a base do XML (IBSCBS/vBC). Qualquer centavo vira divergência.</p>
-      </div>
-    </div>
-    <div class="ibscbs-chip {chip}">{chip_txt}</div>
-  </div>
-
-  <div class="ibscbs-metrics">
-    <div class="ibscbs-metric">
-      <p class="k">Itens</p>
-      <p class="v">{total}</p>
-      <p class="s">Total analisado</p>
-    </div>
-    <div class="ibscbs-metric">
-      <p class="k">Soma Base (XML)</p>
-      <p class="v">R$ {_br_money(soma_xml)}</p>
-      <p class="s">Total do XML</p>
-    </div>
-    <div class="ibscbs-metric">
-      <p class="k">Soma Base (Calc)</p>
-      <p class="v">R$ {_br_money(soma_calc)}</p>
-      <p class="s">Subtração por item</p>
-    </div>
-    <div class="ibscbs-metric">
-      <p class="k">Diferença</p>
-      <p class="v">R$ {_br_money(delta_total)}</p>
-      <p class="s">Calc − XML</p>
-    </div>
-  </div>
-
   <div class="ibscbs-divider"></div>
 
   <div class="ibscbs-calc">
     <div class="ibscbs-formula">
       <p class="label">Cálculo detalhado</p>
-      <p class="ibscbs-eq">{formula}</p>
+      <pre class="ibscbs-eq">{html.escape(formula)}</pre>
     </div>
 
     <div class="ibscbs-right">
@@ -1553,17 +1532,14 @@ vProd = _safe_num
 
       <div class="delta">
         <div class="row"><span>Status do item</span><b>{'OK' if abs(dif) <= TOLERANCIA_BASE_IBSCBS else 'Divergente'}</b></div>
-        <div class="row"><span>Arquivo</span><b>{_h(row.get('arquivo',''))}</b></div>
+        <div class="row"><span>Arquivo</span><b>{html.escape(str(row.get('arquivo','')))}</b></div>
       </div>
     </div>
   </div>
 
   <div class="ibscbs-foot">Regra rígida: diferença precisa ser <b>0,00</b>. Qualquer centavo vira divergência.</div>
 </div>
-"""
-
-    # FIX definitivo: remove indentação antes de renderizar
-    st.markdown(_clean_html(panel), unsafe_allow_html=True)
+""")
 def _detect_cancel_event(xml_bytes: bytes) -> dict | None:
     """Detecta XML de evento de cancelamento (procEventoNFe / evento).
     Retorna dict com dados úteis ou None se não for cancelamento.
