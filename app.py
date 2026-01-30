@@ -2249,25 +2249,6 @@ if xml_files:
                 if sig not in st.session_state["nnf_to_sig"][str(nnf_tmp)]:
                     st.session_state["nnf_to_sig"][str(nnf_tmp)].append(sig)
 
-                        # Guardar XML para download individual (por assinatura/chave)
-                        try:
-                            root_tmp = ET.fromstring(xb)
-                            nnf_tmp = _parse_nnf(root_tmp) or ""
-                            dh_tmp = _parse_date(root_tmp)
-                            chave_tmp = _extract_nfe_key(xb)
-                        except Exception:
-                            nnf_tmp, dh_tmp, chave_tmp = "", None, ""
-                        st.session_state["xml_store"][sig] = {
-                            "bytes": xb,
-                            "src": f"{f.name}:{xn}",
-                            "Numero": nnf_tmp,
-                            "Data": dh_tmp,
-                            "chave": chave_tmp,
-                        }
-                        if nnf_tmp:
-                            st.session_state["nnf_to_sig"].setdefault(str(nnf_tmp), [])
-                            if sig not in st.session_state["nnf_to_sig"][str(nnf_tmp)]:
-                                st.session_state["nnf_to_sig"][str(nnf_tmp)].append(sig)
             # Totais por NOTA (somente quando for XML direto)
             if not f.name.lower().endswith(".zip"):
                 tot0 = _parse_tax_totals_from_xml(b)
@@ -2288,6 +2269,26 @@ if xml_files:
                             continue
                         seen_xml_sigs.add(sig)
                         xml_processed += 1
+                        # Guardar XML para download individual (por assinatura/chave)
+                        try:
+                            root_tmp = ET.fromstring(xb)
+                            nnf_tmp2 = _parse_nnf(root_tmp) or ""
+                            dh_tmp2 = _parse_date(root_tmp)
+                            chave_tmp2 = _extract_nfe_key(xb)
+                        except Exception:
+                            nnf_tmp2, dh_tmp2, chave_tmp2 = "", None, ""
+                        st.session_state["xml_store"][sig] = {
+                            "bytes": xb,
+                            "src": f"{f.name}:{xn}",
+                            "Numero": nnf_tmp2,
+                            "Data": dh_tmp2,
+                            "chave": chave_tmp2,
+                        }
+                        if nnf_tmp2:
+                            st.session_state["nnf_to_sig"].setdefault(str(nnf_tmp2), [])
+                            if sig not in st.session_state["nnf_to_sig"][str(nnf_tmp2)]:
+                                st.session_state["nnf_to_sig"][str(nnf_tmp2)].append(sig)
+
                         tot = _parse_tax_totals_from_xml(xb)
                         icms_total_all += tot["vICMS"]
                         pis_total_all += tot["vPIS"]
