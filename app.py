@@ -1341,6 +1341,10 @@ def _safe_num(x) -> float:
     except Exception:
         return 0.0
 
+def _render_html_block(s: str):
+    """Renderiza HTML sem virar bloco de código (remove indentação)."""
+    st.markdown(dedent(s).strip(), unsafe_allow_html=True)
+
 def aplicar_validacao_base_ibscbs(df_itens: pd.DataFrame) -> pd.DataFrame:
     """Adiciona colunas de validação IBS/CBS (por item)."""
     df = df_itens.copy()
@@ -1393,7 +1397,7 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
         return
 
     # CSS premium (injetado uma vez)
-    st.markdown("""
+    _render_html_block("""
     <style>
     .ibscbs-panel{background:linear-gradient(180deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 100%);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:18px;box-shadow:0 18px 56px rgba(15,23,42,.10);backdrop-filter:blur(10px)}
     .ibscbs-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -1423,7 +1427,7 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
     .ibscbs-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid rgba(226,232,240,.95);background:rgba(255,255,255,.75);color:#0f172a}
     @media (max-width:900px){.ibscbs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ibscbs-calc{grid-template-columns:1fr}}
     </style>
-    """, unsafe_allow_html=True)
+    """)
 
     total = len(df_validado)
     ok = int((df_validado["Status Base IBS/CBS"] == "OK").sum())
@@ -1475,7 +1479,7 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
         f"= Base Calc ({_br_money(base_calc)})"
     )
 
-    st.markdown(f"""
+    _render_html_block(f"""
     <div class="ibscbs-panel">
       <div class="ibscbs-header">
         <div class="ibscbs-title">
@@ -1541,7 +1545,7 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
         </div>
       </div>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
 
 def _detect_cancel_event(xml_bytes: bytes) -> dict | None:
@@ -1711,7 +1715,7 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 # Header (modern - compact)
 # -----------------------------
 st.markdown("""
-    <style>
+<style>
 .header-container{
   font-family:'Inter',sans-serif;
   background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(255,255,255,.88));
