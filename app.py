@@ -1419,34 +1419,258 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
     # CSS premium (injetado uma vez)
     _html_block("""
 <style>
-    .ibscbs-panel{background:linear-gradient(180deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 100%);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:18px;box-shadow:0 18px 56px rgba(15,23,42,.10);backdrop-filter:blur(10px)}
-    .ibscbs-panel.divergente{border-color:rgba(239,68,68,.30);box-shadow:0 18px 56px rgba(15,23,42,.10), 0 0 0 1px rgba(239,68,68,.20), 0 0 26px rgba(239,68,68,.14)}
-    .ibscbs-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
-    .ibscbs-title{display:flex;align-items:flex-start;gap:10px}
-    .ibscbs-title h3{margin:0;font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-.2px}
-    .ibscbs-title p{margin:3px 0 0 0;font-size:12px;color:#64748b;max-width:820px}
-    .ibscbs-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid transparent;white-space:nowrap}
-    .ibscbs-chip.ok{color:#15803d;background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.24)}
-    .ibscbs-chip.bad{color:#b91c1c;background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.24)}
-    .ibscbs-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:10px;margin-bottom:14px}
-    .ibscbs-metric{background:rgba(248,250,252,.90);border:1px solid rgba(226,232,240,.95);border-radius:14px;padding:12px}
-    .ibscbs-metric .k{font-size:12px;color:#64748b;margin:0}
-    .ibscbs-metric .v{font-size:18px;font-weight:900;color:#0f172a;margin:6px 0 0 0}
-    .ibscbs-metric .s{font-size:11px;color:#94a3b8;margin:6px 0 0 0}
-    .ibscbs-divider{height:1px;background:rgba(226,232,240,.95);margin:14px 0}
-    .ibscbs-calc{display:grid;grid-template-columns:1.25fr .75fr;gap:12px}
-    .ibscbs-formula{background:rgba(15,23,42,.04);border:1px solid rgba(148,163,184,.25);border-radius:14px;padding:12px}
-    .ibscbs-formula .label{font-size:12px;font-weight:800;color:#334155;margin:0 0 8px 0}
-    .ibscbs-eq{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:#0f172a;line-height:1.55;margin:0;white-space:pre-wrap;word-break:break-word}
-    .ibscbs-right{background:rgba(248,250,252,.92);border:1px solid rgba(226,232,240,.95);border-radius:14px;padding:12px}
-    .ibscbs-right .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
-    .ibscbs-right .row span{font-size:12px;color:#64748b}
-    .ibscbs-right .row b{font-size:13px;color:#0f172a}
-    .ibscbs-right .delta{margin-top:10px;padding-top:10px;border-top:1px dashed rgba(148,163,184,.4)}
-    .ibscbs-foot{margin-top:10px;font-size:11px;color:#94a3b8}
-    @media (max-width:900px){.ibscbs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ibscbs-calc{grid-template-columns:1fr}}
+/* ===== IBS/CBS Validation Panel (Neon Premium) ===== */
+.ibscbs-panel{
+  position:relative;
+  background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.86) 100%);
+  border: 1px solid rgba(148,163,184,.35);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 18px 56px rgba(15,23,42,.10);
+  backdrop-filter: blur(10px);
+  overflow:hidden;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+
+/* animated neon border */
+.ibscbs-panel::before{
+  content:"";
+  position:absolute; inset:-2px;
+  border-radius: 22px;
+  padding:2px;
+  background: linear-gradient(90deg,
+    rgba(37,99,235,.55),
+    rgba(22,163,74,.55),
+    rgba(245,158,11,.55),
+    rgba(124,58,237,.55),
+    rgba(37,99,235,.55)
+  );
+  background-size: 300% 300%;
+  animation: ibscbsGlow 6s ease-in-out infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity:.55;
+  pointer-events:none;
+}
+@keyframes ibscbsGlow{
+  0%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+  100%{background-position:0% 50%}
+}
+
+.ibscbs-panel:hover{
+  transform: translateY(-2px);
+  box-shadow:
+    0 24px 70px rgba(15,23,42,.14),
+    0 0 0 1px rgba(99,102,241,.14),
+    0 0 34px rgba(99,102,241,.18);
+}
+
+.ibscbs-panel.divergente{
+  border-color: rgba(239,68,68,.30);
+  box-shadow:
+    0 18px 56px rgba(15,23,42,.10),
+    0 0 0 1px rgba(239,68,68,.18),
+    0 0 30px rgba(239,68,68,.14);
+}
+.ibscbs-panel.divergente::before{ opacity:.70; }
+
+/* Header */
+.ibscbs-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.ibscbs-title{display:flex;align-items:flex-start;gap:10px}
+.ibscbs-title h3{margin:0;font-size:16px;font-weight:900;color:#0f172a;letter-spacing:-.2px}
+.ibscbs-title p{margin:3px 0 0 0;font-size:12px;color:#64748b;max-width:860px}
+
+/* Chip */
+.ibscbs-chip{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 12px;border-radius:999px;font-size:12px;font-weight:900;
+  border:1px solid transparent;white-space:nowrap;
+  box-shadow: 0 10px 26px rgba(2,6,23,.08);
+}
+.ibscbs-chip.ok{color:#15803d;background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.24)}
+.ibscbs-chip.bad{color:#b91c1c;background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.24)}
+
+/* Metrics */
+.ibscbs-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:10px;margin-bottom:14px}
+.ibscbs-metric{
+  background: rgba(248,250,252,.92);
+  border:1px solid rgba(226,232,240,.95);
+  border-radius:16px;
+  padding:12px;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+.ibscbs-metric:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 18px 45px rgba(15,23,42,.10), 0 0 22px rgba(99,102,241,.12);
+  border-color: rgba(99,102,241,.22);
+}
+.ibscbs-metric .k{font-size:12px;color:#64748b;margin:0}
+.ibscbs-metric .v{font-size:18px;font-weight:950;color:#0f172a;margin:6px 0 0 0}
+.ibscbs-metric .s{font-size:11px;color:#94a3b8;margin:6px 0 0 0}
+.ibscbs-divider{height:1px;background:rgba(226,232,240,.95);margin:14px 0}
+
+/* Calc layout */
+.ibscbs-calc{display:grid;grid-template-columns:1.15fr .85fr;gap:12px}
+
+.calc-left, .calc-right{
+  background: rgba(248,250,252,.92);
+  border: 1px solid rgba(226,232,240,.95);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 16px 40px rgba(2,6,23,.06);
+  position:relative;
+  overflow:hidden;
+}
+
+.calc-left::after, .calc-right::after{
+  content:"";
+  position:absolute;
+  width: 260px; height: 260px;
+  right:-120px; top:-140px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(99,102,241,.18), transparent 60%);
+  pointer-events:none;
+}
+
+.calc-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.calc-head .t{
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:#334155;
+}
+.calc-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:6px 10px;border-radius:999px;
+  font-size:11px;font-weight:950;
+  border:1px solid rgba(148,163,184,.25);
+  background: rgba(15,23,42,.04);
+  color:#334155;
+}
+.calc-badge .dot{
+  width:8px;height:8px;border-radius:999px;background:rgba(99,102,241,.95);
+  box-shadow: 0 0 14px rgba(99,102,241,.30);
+}
+
+.calc-lines{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:8px;
+}
+
+.calc-line{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 10px;
+  border-radius:14px;
+  border:1px solid rgba(226,232,240,.95);
+  background: rgba(255,255,255,.72);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.calc-line:hover{
+  transform: translateY(-1px);
+  border-color: rgba(99,102,241,.25);
+  box-shadow: 0 14px 30px rgba(2,6,23,.08), 0 0 18px rgba(99,102,241,.12);
+}
+.calc-line .name{
+  font-weight:950;
+  color:#0f172a;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.calc-line .name i{
+  display:inline-flex;
+  width: 22px; height: 22px;
+  align-items:center; justify-content:center;
+  border-radius: 9px;
+  border:1px solid rgba(148,163,184,.25);
+  background: rgba(15,23,42,.04);
+  font-style: normal;
+}
+.calc-line .val{
+  font-variant-numeric: tabular-nums;
+  font-weight:950;
+  color:#0f172a;
+}
+.calc-line.minus .name i{ border-color: rgba(245,158,11,.25); background: rgba(245,158,11,.10); }
+.calc-line.icms .name i{ border-color: rgba(37,99,235,.25); background: rgba(37,99,235,.10); }
+.calc-line.pis  .name i{ border-color: rgba(124,58,237,.25); background: rgba(124,58,237,.10); }
+.calc-line.cof  .name i{ border-color: rgba(22,163,74,.25); background: rgba(22,163,74,.10); }
+
+.calc-eq{
+  margin-top:10px;
+  padding-top:10px;
+  border-top: 1px dashed rgba(148,163,184,.35);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.calc-eq .eq{
+  font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  font-size:12px;
+  color:#334155;
+}
+.calc-eq .res{
+  font-weight: 950;
+  color:#0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Right side rows */
+.calc-right .row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin:8px 0;
+  padding:10px 10px;
+  border-radius:14px;
+  border:1px solid rgba(226,232,240,.95);
+  background: rgba(255,255,255,.72);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.calc-right .row:hover{
+  transform: translateY(-1px);
+  border-color: rgba(99,102,241,.22);
+  box-shadow: 0 14px 30px rgba(2,6,23,.08), 0 0 18px rgba(99,102,241,.10);
+}
+.calc-right .row span{font-size:12px;color:#64748b}
+.calc-right .row b{font-size:13px;color:#0f172a;font-variant-numeric: tabular-nums}
+
+.calc-right .delta{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px dashed rgba(148,163,184,.35);
+}
+
+.calc-right .status-ok b{ color:#15803d; }
+.calc-right .status-bad b{ color:#b91c1c; }
+
+/* Footer */
+.ibscbs-foot{margin-top:10px;font-size:11px;color:#94a3b8}
+
+@media (max-width:900px){
+  .ibscbs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ibscbs-calc{grid-template-columns:1fr}
+}
 </style>
-    """)
+""")
 
     total = len(df_validado)
     ok = int((df_validado["Status Base IBS/CBS"] == "OK").sum())
@@ -1544,24 +1768,58 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
   <div class="ibscbs-divider"></div>
 
   <div class="ibscbs-calc">
-    <div class="ibscbs-formula">
-      <p class="label">Cálculo detalhado</p>
-      <pre class="ibscbs-eq">{formula}</pre>
+  <div class="calc-left">
+    <div class="calc-head">
+      <div class="t">Memória de cálculo</div>
+      <div class="calc-badge"><span class="dot"></span>{status_item}</div>
     </div>
 
-    <div class="ibscbs-right">
-      <div class="row"><span>Base XML</span><b>R$ {_br_money(base_xml)}</b></div>
-      <div class="row"><span>Base Calc</span><b>R$ {_br_money(base_calc)}</b></div>
-      <div class="row"><span>Diferença</span><b>R$ {_br_money(dif)}</b></div>
-
-      <div class="delta">
-        <div class="row"><span>Status do item</span><b>{status_item}</b></div>
-        <div class="row"><span>Arquivo</span><b>{_h(row.get('arquivo',''))}</b></div>
+    <div class="calc-lines">
+      <div class="calc-line">
+        <div class="name"><i>+</i>vProd</div>
+        <div class="val">R$ {_br_money(vProd)}</div>
       </div>
+
+      <div class="calc-line minus">
+        <div class="name"><i>−</i>vDesc</div>
+        <div class="val">R$ {_br_money(vDesc)}</div>
+      </div>
+
+      <div class="calc-line icms">
+        <div class="name"><i>−</i>ICMS</div>
+        <div class="val">R$ {_br_money(vICMS)}</div>
+      </div>
+
+      <div class="calc-line pis">
+        <div class="name"><i>−</i>PIS</div>
+        <div class="val">R$ {_br_money(vPIS)}</div>
+      </div>
+
+      <div class="calc-line cof">
+        <div class="name"><i>−</i>COFINS</div>
+        <div class="val">R$ {_br_money(vCOF)}</div>
+      </div>
+    </div>
+
+    <div class="calc-eq">
+      <div class="eq">= Base Calc</div>
+      <div class="res">R$ {_br_money(base_calc)}</div>
     </div>
   </div>
 
-  <div class="ibscbs-foot">Regra rígida: diferença precisa ser <b>0,00</b>. Qualquer centavo vira divergência.</div>
+  <div class="calc-right">
+    <div class="row"><span>Base XML</span><b>R$ {_br_money(base_xml)}</b></div>
+    <div class="row"><span>Base Calc</span><b>R$ {_br_money(base_calc)}</b></div>
+    <div class="row"><span>Diferença</span><b>R$ {_br_money(dif)}</b></div>
+
+    <div class="delta">
+      <div class="row {('status-ok' if status_item=='OK' else 'status-bad')}"><span>Status do item</span><b>{status_item}</b></div>
+      <div class="row"><span>Arquivo</span><b>{_h(row.get('arquivo',''))}</b></div>
+    </div>
+  </div>
+</div>
+
+<div class="ibscbs-foot">Regra rígida: diferença precisa ser <b>0,00</b>. Qualquer centavo vira divergência.</div>
 </div>
 """
 
