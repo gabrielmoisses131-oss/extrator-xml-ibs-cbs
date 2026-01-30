@@ -1259,6 +1259,13 @@ def _parse_items_from_xml(xml_bytes: bytes, filename: str) -> list[dict]:
         vibs_f = _to_float(vibs)
         vcbs_f = _to_float(vcbs)
 
+        # Componentes para validação por subtração (sempre em float)
+        vprod_f = _to_float0(vprod)
+        vdesc_f = _to_float0(vdesc)
+        vicms_item_f = _to_float0(vicms_item)
+        vpis_item_f = _to_float0(vpis_item)
+        vcof_item_f = _to_float0(vcof_item)
+
         # Fonte do valor (base)
         fonte = "IBSCBS/vBC" if vbc_f is not None else ""
 
