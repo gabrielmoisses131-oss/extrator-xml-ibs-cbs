@@ -1711,7 +1711,7 @@ def _append_to_workbook(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 # Header (modern - compact)
 # -----------------------------
 st.markdown("""
-<style>
+    <style>
 .header-container{
   font-family:'Inter',sans-serif;
   background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(255,255,255,.88));
