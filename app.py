@@ -1077,6 +1077,13 @@ def _html_block(s: str):
     st.markdown(dedent(s).strip(), unsafe_allow_html=True)
 
 
+def _html_clean(s: str) -> str:
+    """Normaliza HTML para evitar que o Markdown do Streamlit transforme em bloco de código."""
+    raw = dedent(s)
+    lines = [ln.lstrip() for ln in raw.splitlines() if ln.strip()]
+    return "\n".join(lines)
+
+
 # -----------------------------
 # Spinner overlay (4 cores)
 # -----------------------------
@@ -1558,8 +1565,8 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
 </div>
 """
 
-    # Render mais robusto (não vira texto)
-    components.html(panel, height=420, scrolling=False)
+    # Render no corpo do Streamlit (aplicando CSS do app) sem virar texto.
+    st.markdown(_html_clean(panel), unsafe_allow_html=True)
 
 
 def _detect_cancel_event(xml_bytes: bytes) -> dict | None:
