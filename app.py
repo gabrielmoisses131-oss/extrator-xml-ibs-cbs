@@ -1696,27 +1696,6 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
             key=f"{key_prefix}_dl_div"
         )
 
-    # Download do XML da nota selecionada (individual)
-    try:
-        sig_sel = str(row.get("xml_sig", "")).strip()
-        store = st.session_state.get("xml_store", {})
-        if sig_sel and sig_sel in store:
-            meta = store[sig_sel]
-            nnf = meta.get("Numero") or row.get("Numero") or ""
-            chave = meta.get("chave") or ""
-            fname = f"NFe_{nnf}.xml" if nnf else "nota.xml"
-            if chave:
-                fname = f"NFe_{nnf}_{chave[-6:]}.xml" if nnf else f"NFe_{chave[-6:]}.xml"
-            st.download_button(
-                "⬇️ Baixar XML desta nota",
-                data=meta["bytes"],
-                file_name=fname,
-                mime="application/xml",
-                key=f"{key_prefix}_dl_xml_{sig_sel}",
-            )
-    except Exception:
-        pass
-
     # Dropdown: por padrão, só divergentes quando existir
     show_only_div = st.checkbox(
         "Mostrar somente as divergentes",
@@ -1748,6 +1727,31 @@ def render_painel_validacao_premium(df_validado: pd.DataFrame, *, key_prefix: st
     )
 
     row = df_tmp[df_tmp[label_col].astype(str) == str(pick)].iloc[0]
+
+    # Download do XML da nota selecionada (individual)
+    try:
+        sig_sel = str(row.get("xml_sig", "")).strip()
+        store = st.session_state.get("xml_store", {})
+        if sig_sel and sig_sel in store:
+            meta = store[sig_sel]
+            nnf = meta.get("Numero") or row.get("Numero") or ""
+            chave = meta.get("chave") or ""
+            src = meta.get("src") or ""
+            # nome amigável
+            fname = f"NFe_{nnf}.xml" if nnf else "nota.xml"
+            if chave:
+                fname = f"NFe_{nnf}_{chave[-6:]}.xml" if nnf else f"NFe_{chave[-6:]}.xml"
+            st.download_button(
+                "⬇️ Baixar XML desta nota",
+                data=meta.get("bytes", b""),
+                file_name=fname,
+                mime="application/xml",
+                key=f"{key_prefix}_dl_xml_{sig_sel}",
+                help=f"Origem: {src}" if src else None,
+            )
+    except Exception:
+        pass
+
 
     vProd = _safe_num(row.get("vProd"))
     vDesc = _safe_num(row.get("vDesc"))
@@ -2200,10 +2204,6 @@ rows_all: list[dict] = []
 errors: list[str] = []
 cancelados: list[dict] = []
 
-# Store dos XMLs para download por nota (sig -> bytes/metadata)
-st.session_state.setdefault('xml_store', {})
-st.session_state.setdefault('nnf_to_sig', {})
-
 # Acumuladores por NOTA (ICMSTot)
 icms_total_all = 0.0
 pis_total_all = 0.0
@@ -2214,6 +2214,13 @@ if xml_files:
     spinner_placeholder.markdown(SPINNER_HTML, unsafe_allow_html=True)
 
     seen_xml_sigs: set[str] = set()
+
+    # Store dos XMLs para download individual (por nota)
+    if "xml_store" not in st.session_state:
+        st.session_state["xml_store"] = {}  # sig -> {bytes, src, Numero, Data, chave}
+    if "nnf_to_sig" not in st.session_state:
+        st.session_state["nnf_to_sig"] = {}  # nnf -> [sig, sig...]
+
     dupes_ignored = 0
     xml_processed = 0
 
@@ -2229,26 +2236,25 @@ if xml_files:
                 seen_xml_sigs.add(sig)
                 xml_processed += 1
 
-            # Guardar XML para download individual (por assinatura/chave)
-            try:
-                root_tmp = ET.fromstring(b)
-                nnf_tmp = _parse_nnf(root_tmp) or ""
-                dh_tmp = _parse_date(root_tmp)
-                chave_tmp = _extract_nfe_key(b)
-            except Exception:
-                nnf_tmp, dh_tmp, chave_tmp = "", None, ""
-            st.session_state["xml_store"][sig] = {
-                "bytes": b,
-                "src": f.name,
-                "Numero": nnf_tmp,
-                "Data": dh_tmp,
-                "chave": chave_tmp,
-            }
-            if nnf_tmp:
-                st.session_state["nnf_to_sig"].setdefault(str(nnf_tmp), [])
-                if sig not in st.session_state["nnf_to_sig"][str(nnf_tmp)]:
-                    st.session_state["nnf_to_sig"][str(nnf_tmp)].append(sig)
-
+                # Guardar XML para download individual (por assinatura/chave)
+                try:
+                    root_tmp = ET.fromstring(b)
+                    nnf_tmp = _parse_nnf(root_tmp) or ""
+                    dh_tmp = _parse_date(root_tmp)
+                    chave_tmp = _extract_nfe_key(b)
+                except Exception:
+                    nnf_tmp, dh_tmp, chave_tmp = "", None, ""
+                st.session_state["xml_store"][sig] = {
+                    "bytes": b,
+                    "src": f.name,
+                    "Numero": nnf_tmp,
+                    "Data": dh_tmp,
+                    "chave": chave_tmp,
+                }
+                if nnf_tmp:
+                    st.session_state["nnf_to_sig"].setdefault(str(nnf_tmp), [])
+                    if sig not in st.session_state["nnf_to_sig"][str(nnf_tmp)]:
+                        st.session_state["nnf_to_sig"][str(nnf_tmp)].append(sig)
             # Totais por NOTA (somente quando for XML direto)
             if not f.name.lower().endswith(".zip"):
                 tot0 = _parse_tax_totals_from_xml(b)
@@ -2269,6 +2275,7 @@ if xml_files:
                             continue
                         seen_xml_sigs.add(sig)
                         xml_processed += 1
+
                         # Guardar XML para download individual (por assinatura/chave)
                         try:
                             root_tmp = ET.fromstring(xb)
@@ -2646,7 +2653,7 @@ if df.empty:
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
-c1, c2, c3 = st.columns([1, 2, 1], gap="large")
+c1, c2, c3, c4 = st.columns([1, 2, 1, 1], gap="large")
 
 with c1:
     min_d = df["Data"].min()
@@ -2660,6 +2667,9 @@ with c2:
 with c3:
     classes = sorted([c for c in df["cClassTrib"].dropna().unique().tolist() if str(c).strip() != ""])
     pick = st.selectbox("cClassTrib", options=["(Todos)"] + classes, index=0)
+
+with c4:
+    nota_q = st.text_input("Buscar nota (nNF)", placeholder="Ex.: 6484")
 
 df_view = df.copy()
 
@@ -2678,6 +2688,53 @@ if q:
 if pick and pick != "(Todos)":
     df_view = df_view[df_view["cClassTrib"].astype(str) == str(pick)]
 
+# busca por número da nota (nNF)
+if 'nota_q' in locals() and nota_q:
+    nn = ''.join(ch for ch in str(nota_q).strip() if ch.isdigit())
+    if nn:
+        df_view = df_view[df_view["Numero"].astype(str).str.contains(nn, na=False)]
+
+
+
+# Download rápido do XML pela nota (digite o número acima)
+try:
+    if 'nota_q' in locals() and nota_q:
+        nn = ''.join(ch for ch in str(nota_q).strip() if ch.isdigit())
+        if nn:
+            sigs = st.session_state.get("nnf_to_sig", {}).get(str(nn), [])
+            store = st.session_state.get("xml_store", {})
+            sigs = [s for s in sigs if s in store]
+            if sigs:
+                # Se houver mais de 1 XML com o mesmo número (ex.: séries diferentes), deixa escolher
+                if len(sigs) > 1:
+                    opt_labels = []
+                    for s in sigs:
+                        meta = store.get(s, {})
+                        chave = meta.get("chave") or ""
+                        src = meta.get("src") or ""
+                        suf = (chave[-6:] if chave else s[-6:])
+                        opt_labels.append(f"{nn} • {suf} • {src}")
+                    pick_sig = st.selectbox("XML da nota (para baixar)", options=opt_labels, index=0, key="dl_xml_by_nnf_pick")
+                    sig_sel = sigs[opt_labels.index(pick_sig)]
+                else:
+                    sig_sel = sigs[0]
+
+                meta = store.get(sig_sel, {})
+                chave = meta.get("chave") or ""
+                src = meta.get("src") or ""
+                fname = f"NFe_{nn}.xml"
+                if chave:
+                    fname = f"NFe_{nn}_{chave[-6:]}.xml"
+                st.download_button(
+                    "⬇️ Baixar XML dessa nota (busca)",
+                    data=meta.get("bytes", b""),
+                    file_name=fname,
+                    mime="application/xml",
+                    key=f"dl_xml_by_nnf_{sig_sel}",
+                    help=f"Origem: {src}" if src else None,
+                )
+except Exception:
+    pass
 
 # filtro por KPI (clique nos cards)
 if selected_kpi != "all":
